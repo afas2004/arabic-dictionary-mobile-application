@@ -108,6 +108,20 @@ String _presentVowel(VerbPattern pattern) {
   }
 }
 
+String _pastVowel(VerbPattern pattern) {
+  switch (pattern.bab) {
+    case 4:
+    case 6:
+      return _kasra;
+    case 5:
+      return _damma;
+    case 1:
+    case 2:
+    case 3:
+    default:
+      return _fatha;
+  }
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // SUFFIX TABLES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -196,15 +210,13 @@ String _stripDiacritics(String text) {
 // STEM BUILDERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Build past tense stem: فَعَلَ pattern
-/// Returns stem without trailing fatha so suffixes attach cleanly
-String? _buildPastStem(List<String> radicals) {
+String? _buildPastStem(List<String> radicals, String pastVowel) {
   if (radicals.length < 3) return null;
   final f   = radicals[0];
   final ain = radicals[1];
   final lam = radicals[2];
-  // Remove trailing fatha — suffix table handles final vowel
-  return '$f${_fatha}$ain${_fatha}$lam';
+  // Use pastVowel for middle radical instead of hardcoded fatha
+  return '$f${_fatha}$ain${pastVowel}$lam';
 }
 
 /// Build present tense stem: فْعَلُ pattern (first radical gets sukun)
@@ -225,10 +237,11 @@ List<ConjugationRow> _generateConjugations(
   String root,
   VerbPattern pattern,
 ) {
-  final radicals    = _extractRadicals(root);
+  final radicals     = _extractRadicals(root);
   final presentVowel = _presentVowel(pattern);
-  final pastStem    = _buildPastStem(radicals);
-  final presentStem = _buildPresentStem(radicals, presentVowel);
+  final pastVowel    = _pastVowel(pattern);           // ← NEW
+  final pastStem     = _buildPastStem(radicals, pastVowel);  // ← UPDATED
+  final presentStem  = _buildPresentStem(radicals, presentVowel);
 
   if (pastStem == null || presentStem == null) return [];
 
@@ -236,7 +249,6 @@ List<ConjugationRow> _generateConjugations(
 
   // ── Past tense ──
   for (final s in _pastSuffixes) {
-    // Remove trailing fatha from stem before suffix
     final stem = pastStem.endsWith(_fatha)
         ? pastStem.substring(0, pastStem.length - 1)
         : pastStem;
@@ -269,9 +281,8 @@ List<ConjugationRow> _generateConjugations(
   }
 
   // ── Imperative ──
-  // Prefix vowel: damma for bab 1, kasra for others
   final impVowel  = pattern.haraka == Haraka.damma ? _damma : _kasra;
-  final impPrefix = '\u0627$impVowel'; // ا + vowel
+  final impPrefix = '\u0627$impVowel';
 
   for (final imp in _imperativeForms) {
     rows.add(ConjugationRow(
