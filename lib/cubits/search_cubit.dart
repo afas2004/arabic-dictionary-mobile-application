@@ -9,13 +9,13 @@ abstract class SearchState extends Equatable {
   List<Object?> get props => [];
 }
 
-class SearchInitial extends SearchState {}
+class SearchEmpty extends SearchState {} // Replaced Initial with Empty
 
 class SearchLoading extends SearchState {}
 
 class SearchLoaded extends SearchState {
   final List<Word> words;
-  final String query; // Added so UI knows what string to highlight
+  final String query; 
   
   SearchLoaded(this.words, this.query);
   
@@ -34,32 +34,24 @@ class SearchError extends SearchState {
 // --- CUBIT ---
 class SearchCubit extends Cubit<SearchState> {
   final DictionaryRepository repository;
-  List<Word> _commonWordsCache = [];
 
-  SearchCubit({required this.repository}) : super(SearchInitial());
+  SearchCubit({required this.repository}) : super(SearchEmpty());
 
   Future<void> loadInitial() async {
-    emit(SearchLoading());
-    try {
-      if (_commonWordsCache.isEmpty) {
-        _commonWordsCache = await repository.getCommonWords();
-      }
-      emit(SearchLoaded(_commonWordsCache, "")); // Empty query for initial load
-    } catch (e) {
-      emit(SearchError(e.toString()));
-    }
+    // Point 1: No input = no results. Show empty state.
+    emit(SearchEmpty());
   }
 
   Future<void> search(String query) async {
     if (query.trim().isEmpty) {
-      emit(SearchLoaded(_commonWordsCache, ""));
+      emit(SearchEmpty());
       return;
     }
     
     emit(SearchLoading());
     try {
       final results = await repository.searchWords(query);
-      emit(SearchLoaded(results, query)); // Pass the active query to the state
+      emit(SearchLoaded(results, query)); 
     } catch (e) {
       emit(SearchError(e.toString()));
     }

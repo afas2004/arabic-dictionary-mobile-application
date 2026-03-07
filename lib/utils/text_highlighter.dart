@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
 class TextHighlighter {
-  
-  /// 1. English Exact String Highlight
-  /// Wraps matches of the search query with a yellow background.
-  static List<TextSpan> highlightEnglish(String text, String query) {
-    if (query.trim().isEmpty) return [TextSpan(text: text)];
+  static const Color matchColor = Color(0xFF1976D2); 
+
+  /// 1. English Substring Highlight
+  static List<TextSpan> highlightQuery(String text, String query, {Color baseColor = const Color(0xFF374151)}) {
+    if (query.trim().isEmpty) return [TextSpan(text: text, style: TextStyle(color: baseColor))];
     
     final String lowerText = text.toLowerCase();
     final String lowerQuery = query.toLowerCase();
@@ -16,49 +16,68 @@ class TextHighlighter {
     
     while (indexOfMatch != -1) {
       if (indexOfMatch > start) {
-        spans.add(TextSpan(text: text.substring(start, indexOfMatch)));
+        spans.add(TextSpan(text: text.substring(start, indexOfMatch), style: TextStyle(color: baseColor)));
       }
-      // The highlighted matched word
       spans.add(TextSpan(
         text: text.substring(indexOfMatch, indexOfMatch + query.length),
-        style: const TextStyle(
-          backgroundColor: Color(0xFFFFF59D), // Light yellow highlight
-          fontWeight: FontWeight.bold, 
-          color: Colors.black87
-        ),
+        style: const TextStyle(color: matchColor, fontWeight: FontWeight.bold),
       ));
       start = indexOfMatch + query.length;
       indexOfMatch = lowerText.indexOf(lowerQuery, start);
     }
     
     if (start < text.length) {
-      spans.add(TextSpan(text: text.substring(start)));
+      spans.add(TextSpan(text: text.substring(start), style: TextStyle(color: baseColor)));
     }
     
     return spans;
   }
 
-  /// 2. Arabic Root Highlight
-  /// Highlights letters matching the root (e.g. ك-ت-ب) inside a derived word (e.g. مَكْتَبَة).
-  static List<TextSpan> highlightArabicRoot(
-    String word, 
-    String root, {
-    Color rootColor = const Color(0xFFF57C00), // Orange
-    Color baseColor = const Color(0xFF374151)  // Dark Gray
-  }) {
+  /// 2. Arabic Diacritic-Agnostic Highlight (NEW FIX)
+  /// Finds unvocalized query (e.g. كتب) inside vocalized text (e.g. كَتَبَ)
+  static List<TextSpan> highlightArabicQuery(String text, String query, {Color baseColor = const Color(0xFF374151)}) {
+    if (query.trim().isEmpty) return [TextSpan(text: text, style: TextStyle(color: baseColor))];
+
+    // Strip diacritics from the search query just in case the user typed them
+    String cleanQuery = query.replaceAll(RegExp(r'[\u064B-\u065F]'), '');
+    if (cleanQuery.isEmpty) return [TextSpan(text: text, style: TextStyle(color: baseColor))];
+
+    // Build a regex that allows optional diacritics between every letter of the query
+    // e.g., 'باع' becomes 'ب[\u064B-\u065F]*ا[\u064B-\u065F]*ع[\u064B-\u065F]*'
+    String regexStr = cleanQuery.split('').join(r'[\u064B-\u065F]*') + r'[\u064B-\u065F]*';
+    RegExp regex = RegExp(regexStr);
+
+    List<TextSpan> spans = [];
+    int start = 0;
+
+    for (final match in regex.allMatches(text)) {
+      if (match.start > start) {
+        spans.add(TextSpan(text: text.substring(start, match.start), style: TextStyle(color: baseColor)));
+      }
+      spans.add(TextSpan(
+        text: match.group(0)!,
+        style: const TextStyle(color: matchColor, fontWeight: FontWeight.bold),
+      ));
+      start = match.end;
+    }
+
+    if (start < text.length) {
+      spans.add(TextSpan(text: text.substring(start), style: TextStyle(color: baseColor)));
+    }
+    return spans;
+  }
+
+  /// 3. Detail Page Specific: Arabic Root Highlight
+  static List<TextSpan> highlightArabicRoot(String word, String root, {Color baseColor = const Color(0xFF374151)}) {
     if (root.isEmpty) return [TextSpan(text: word, style: TextStyle(color: baseColor))];
 
-    // Normalize Alif variations to ensure roots match properly
     String normalize(String s) => s.replaceAll(RegExp(r'[أإآ]'), 'ا');
-    
-    // Extract raw root letters without hyphens
     final List<String> rootLetters = root.replaceAll('-', '').split('').map((l) => normalize(l)).toList();
     
     List<TextSpan> spans = [];
     bool wasRoot = false;
     String currentChunk = "";
 
-    // Arabic diacritics Unicode range
     bool isDiacritic(String char) {
       int code = char.codeUnitAt(0);
       return code >= 0x064B && code <= 0x065F;
@@ -66,33 +85,24 @@ class TextHighlighter {
 
     for (int i = 0; i < word.length; i++) {
       String char = word[i];
-      
       if (isDiacritic(char)) {
-         // Diacritic inherits the color of its base letter
          currentChunk += char;
       } else {
          bool isRoot = rootLetters.contains(normalize(char));
-         
-         // If we switch from root to non-root (or vice versa), save the chunk and switch colors
          if (isRoot != wasRoot && currentChunk.isNotEmpty) {
            spans.add(TextSpan(
              text: currentChunk, 
-             style: TextStyle(color: wasRoot ? rootColor : baseColor)
+             style: TextStyle(color: wasRoot ? matchColor : baseColor)
            ));
            currentChunk = "";
          }
-         
          wasRoot = isRoot;
          currentChunk += char;
       }
     }
     
-    // Add the final remaining chunk
     if (currentChunk.isNotEmpty) {
-       spans.add(TextSpan(
-         text: currentChunk, 
-         style: TextStyle(color: wasRoot ? rootColor : baseColor)
-       ));
+       spans.add(TextSpan(text: currentChunk, style: TextStyle(color: wasRoot ? matchColor : baseColor)));
     }
 
     return spans;

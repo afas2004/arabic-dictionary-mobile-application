@@ -1,65 +1,87 @@
-/// Utility functions to clean and format database strings for the UI.
+// lib/utils/formatters.dart
+//
+// Display utilities for the Arabic Dictionary UI.
+// Hans Wehr data-cleaning logic has been removed (no longer needed in v7).
+// Remaining functions handle word type labels, root display logic, and
+// weak/irregular root detection for the search and detail screens.
+
+import '../models/models.dart';
 
 class Formatters {
-  
-  /// 1. Cleans raw Hans Wehr meaning strings
-  static String cleanMeaning(String raw, String wordType) {
-    if (raw.isEmpty) return raw;
-    String cleaned = raw;
+  // ── Word type labels ──────────────────────────────────────────────────────
 
-    // Remove anything inside parentheses e.g. "(katb, kitba, kitāba)"
-    cleaned = cleaned.replaceAll(RegExp(r'\(.*?\)'), '').trim();
-
-    // Remove plural notation e.g. "pl. makātib2 "
-    cleaned = cleaned.replaceAll(RegExp(r'pl\. [^\s]+ '), '').trim();
-
-    // For verbs, the actual English meaning almost always starts with "to "
-    // This perfectly strips leading romanizations like "kataba u " or "ḳabura u "
-    if (wordType.contains('verb') && cleaned.contains('to ')) {
-      cleaned = cleaned.substring(cleaned.indexOf('to '));
-    } else {
-      // For nouns, we do a basic cleanup of leading romanized single words
-      // if they precede the actual definition (heuristic approach)
-      List<String> words = cleaned.split(' ');
-      if (words.length > 1 && !words[0].contains(RegExp(r'[A-Z]'))) {
-         // This is a simplistic strip, but works for most Hans Wehr noun prefixes
-         if (words[0].endsWith('a') || words[0].endsWith('un') || words[0].endsWith('in')) {
-            words.removeAt(0);
-            cleaned = words.join(' ');
-         }
-      }
+  /// Converts a DB word_type string into a human-readable label.
+  static String formatWordType(String wordType) {
+    switch (wordType) {
+      case 'base_verb':           return 'Verb';
+      case 'verbal_noun':         return 'Verbal Noun';
+      case 'active_participle':   return 'Active Participle';
+      case 'passive_participle':  return 'Passive Participle';
+      case 'intensive_form':      return 'Intensive Form';
+      case 'singular_noun':       return 'Noun';
+      case 'adjective':           return 'Adjective';
+      case 'adjective_sifat':     return 'Adjective';
+      case 'adjective_mansoub':   return 'Relative Adjective';
+      case 'comparative':         return 'Comparative';
+      default:                    return wordType;
     }
-
-    // Clean up any double spaces left behind
-    return cleaned.replaceAll('  ', ' ').trim();
   }
 
-  /// 2. Truncates long meanings for the Search Results preview
-  static String truncateMeaningPreview(String cleanedMeaning) {
-    if (cleanedMeaning.isEmpty) return cleanedMeaning;
+  // ── Root display logic ────────────────────────────────────────────────────
 
-    // Truncate at the first comma
-    int commaIndex = cleanedMeaning.indexOf(',');
-    if (commaIndex != -1 && commaIndex <= 50) {
-      return '${cleanedMeaning.substring(0, commaIndex)}...';
+  /// Returns true if the root should be shown on the word tile.
+  ///
+  /// Rules:
+  /// - Hide for standalone nouns and adjectives (root not linguistically
+  ///   informative for learners in these cases).
+  /// - Hide for non-triliteral roots (4+ consonants — quadriliteral/compound).
+  /// - Always show for verbs, verbal nouns, and participles.
+  static bool shouldDisplayRoot(Word word) {
+    // Hide for standalone nouns and pure adjectives
+    if (word.wordType == 'singular_noun' ||
+        word.wordType == 'adjective' ||
+        word.wordType == 'adjective_sifat' ||
+        word.wordType == 'adjective_mansoub') {
+      return false;
     }
 
-    // Or truncate at ~50 characters if no early comma exists
-    if (cleanedMeaning.length > 50) {
-      return '${cleanedMeaning.substring(0, 50)}...';
-    }
+    // Hide if non-triliteral: root letters are separated by '-',
+    // so a triliteral root has exactly 5 chars: 'ك-ت-ب' (3 letters + 2 dashes).
+    // Anything longer is quadriliteral or compound.
+    if (word.root.length > 5) return false;
 
-    return cleanedMeaning;
+    return true;
   }
 
-  /// 4. Maps raw DB word_type to readable UI strings
-  static String formatWordType(String type) {
-    if (type.isEmpty) return type;
-    
-    // e.g., "verbal_noun" -> ["verbal", "noun"] -> "Verbal Noun"
-    return type.split('_').map((word) {
-      if (word.isEmpty) return word;
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).join(' ');
+  /// Returns true if the root is weak (mu'tal) or hamzated.
+  ///
+  /// Weak roots contain و or ي as a radical, or ء/أ/إ (hamza).
+  /// The UI replaces the root display with a red "Weak Root" tag for these
+  /// to avoid confusing learners with the mutated surface form.
+  static bool isWeakRoot(Word word) {
+    if (!shouldDisplayRoot(word)) return false;
+
+    // Extract only the letter characters from the dash-separated root
+    final letters = word.root.replaceAll('-', '');
+
+    // Weak (mu'tal) radicals
+    if (letters.contains('و') || letters.contains('ي')) return true;
+
+    // Hamzated radicals
+    if (letters.contains('ء') ||
+        letters.contains('أ') ||
+        letters.contains('إ') ||
+        letters.contains('آ')) return true;
+
+    return false;
+  }
+
+  // ── Meaning display ───────────────────────────────────────────────────────
+
+  /// Returns the meaning text ready for display.
+  /// v7 meanings are already clean — no regex stripping needed.
+  /// This method is kept as a pass-through for future use and UI consistency.
+  static String cleanMeaning(String meaning) {
+    return meaning.trim();
   }
 }
