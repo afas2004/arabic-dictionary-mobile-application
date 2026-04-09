@@ -17,6 +17,7 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
+  bool _isArabicInput = true; // tracks current script for TextField direction
 
   @override
   void initState() {
@@ -45,9 +46,20 @@ class _SearchScreenState extends State<SearchScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             child: TextField(
               controller: _searchController,
-              textAlign: TextAlign.right,
-              textDirection: TextDirection.rtl,
-              onChanged: (val) => context.read<SearchCubit>().search(val),
+              textAlign: _isArabicInput ? TextAlign.right : TextAlign.left,
+              textDirection: _isArabicInput ? TextDirection.rtl : TextDirection.ltr,
+              onChanged: (val) {
+                final hasArabic = RegExp(r'[\u0600-\u06FF]').hasMatch(val);
+                final hasLatin  = RegExp(r'[a-zA-Z]').hasMatch(val);
+                if (hasLatin && !hasArabic && _isArabicInput) {
+                  setState(() => _isArabicInput = false);
+                } else if (hasArabic && !_isArabicInput) {
+                  setState(() => _isArabicInput = true);
+                } else if (val.isEmpty && !_isArabicInput) {
+                  setState(() => _isArabicInput = true);
+                }
+                context.read<SearchCubit>().search(val);
+              },
               decoration: InputDecoration(
                 hintText: 'ابحث عن كلمة...',
                 hintStyle: GoogleFonts.notoNaskhArabic(color: Colors.grey[400]),
@@ -137,7 +149,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 children: [
                   if (!isWeak)
                     Text(
-                      'Root:',
+                      'from',
                       style: GoogleFonts.manrope(
                           fontSize: 11, color: Colors.grey[500]),
                     ),
@@ -161,8 +173,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     )
                   else
                     Text(
-                      word.root,
-                      textDirection: TextDirection.ltr,
+                      word.baseFormArabic ?? word.root.replaceAll('-', ''),
                       style: GoogleFonts.notoNaskhArabic(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
@@ -195,9 +206,12 @@ class _SearchScreenState extends State<SearchScreen> {
                         text: TextSpan(
                           style: GoogleFonts.notoNaskhArabic(
                               fontSize: 20, fontWeight: FontWeight.bold),
+                          // Arabic: always highlight root consonants (works for
+                          // both direct matches and stemmer fallback results).
+                          // English: no Arabic highlight needed.
                           children: isArabicSearch
-                              ? TextHighlighter.highlightArabicQuery(
-                                  word.formArabic, query,
+                              ? TextHighlighter.highlightArabicRoot(
+                                  word.formArabic, word.root,
                                   baseColor: Colors.black87)
                               : [
                                   TextSpan(
@@ -238,9 +252,9 @@ class _SearchScreenState extends State<SearchScreen> {
                         style: GoogleFonts.manrope(
                             fontSize: 11, color: Colors.grey[500]),
                       ),
-                      if (word.verbForm != null)
+                      if (Formatters.formatVerbForm(word.verbForm) != null)
                         Text(
-                          ' • Form ${word.verbForm}',
+                          ' • ${Formatters.formatVerbForm(word.verbForm)!}',
                           style: GoogleFonts.manrope(
                               fontSize: 11, color: Colors.grey[500]),
                         ),

@@ -27,15 +27,37 @@ class Formatters {
     }
   }
 
+  // ── Verb form label ───────────────────────────────────────────────────────
+
+  /// Maps verb_form DB values to display labels.
+  /// Returns null for unrecognized codes (e.g. Buckwalter class codes like
+  /// 'v', 'y', 'x') so the caller can hide the display entirely.
+  static String? formatVerbForm(String? verbForm) {
+    if (verbForm == null) return null;
+    const Map<String, String> known = {
+      'I':    'Form I',
+      'II':   'Form II',
+      'III':  'Form III',
+      'IV':   'Form IV',
+      'V':    'Form V',
+      'VI':   'Form VI',
+      'VII':  'Form VII',
+      'VIII': 'Form VIII',
+      'IX':   'Form IX',
+      'X':    'Form X',
+    };
+    return known[verbForm]; // null for unrecognized codes
+  }
+
   // ── Root display logic ────────────────────────────────────────────────────
 
-  /// Returns true if the root should be shown on the word tile.
+  /// Returns true if the base-form reference should be shown on the word tile.
   ///
   /// Rules:
-  /// - Hide for standalone nouns and adjectives (root not linguistically
-  ///   informative for learners in these cases).
+  /// - Hide for standalone nouns and adjectives.
+  /// - Hide if the word IS the base form (baseFormId == null) — showing its
+  ///   own root would be redundant.
   /// - Hide for non-triliteral roots (4+ consonants — quadriliteral/compound).
-  /// - Always show for verbs, verbal nouns, and participles.
   static bool shouldDisplayRoot(Word word) {
     // Hide for standalone nouns and pure adjectives
     if (word.wordType == 'singular_noun' ||
@@ -44,6 +66,9 @@ class Formatters {
         word.wordType == 'adjective_mansoub') {
       return false;
     }
+
+    // Hide if word IS the base form — no parent to point to
+    if (word.baseFormId == null) return false;
 
     // Hide if non-triliteral: root letters are separated by '-',
     // so a triliteral root has exactly 5 chars: 'ك-ت-ب' (3 letters + 2 dashes).

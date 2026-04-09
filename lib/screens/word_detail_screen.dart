@@ -33,7 +33,9 @@ class WordDetailScreen extends StatelessWidget {
           ),
           centerTitle: true,
           title: Text(
-            Formatters.shouldDisplayRoot(word) ? word.root : '',
+            Formatters.shouldDisplayRoot(word)
+                ? (word.baseFormArabic ?? word.root.replaceAll('-', ''))
+                : '',
             style: GoogleFonts.notoNaskhArabic(
               color: Colors.black87,
               fontWeight: FontWeight.bold,
@@ -62,7 +64,7 @@ class WordDetailScreen extends StatelessWidget {
                     _buildMeaningsList(state.meanings),
                     SizedBox(height: 24),
                     if (state.conjugationTable != null)
-                      _buildConjugationGrids(state.conjugationTable!),
+                      _buildConjugationGrids(state.conjugationTable!, state.word.root),
                     SizedBox(height: 48),
                   ],
                 ),
@@ -138,7 +140,7 @@ class WordDetailScreen extends StatelessWidget {
                   )
                 else
                   Text(
-                    'Root: ${word.root}',
+                    word.baseFormArabic ?? word.root.replaceAll('-', ''),
                     style: GoogleFonts.notoNaskhArabic(
                       color: Colors.grey[700],
                       fontWeight: FontWeight.bold,
@@ -150,10 +152,10 @@ class WordDetailScreen extends StatelessWidget {
                 readableType,
                 style: GoogleFonts.manrope(fontSize: 12, color: Colors.black54),
               ),
-              if (word.verbForm != null) ...[
+              if (Formatters.formatVerbForm(word.verbForm) != null) ...[
                 Text('•', style: TextStyle(color: Colors.grey)),
                 Text(
-                  'Form ${word.verbForm}',
+                  Formatters.formatVerbForm(word.verbForm)!,
                   style:
                       GoogleFonts.manrope(fontSize: 12, color: Colors.black54),
                 ),
@@ -203,16 +205,16 @@ class WordDetailScreen extends StatelessWidget {
 
   // ── Conjugation grids ────────────────────────────────────────────────────────
 
-  Widget _buildConjugationGrids(ConjugationTable table) {
+  Widget _buildConjugationGrids(ConjugationTable table, String root) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12.0),
       child: Column(
         children: [
-          _buildTenseBlock('Past Tense', 'الماضي', table.past),
+          _buildTenseBlock('Past Tense', 'الماضي', table.past, root),
           SizedBox(height: 16),
-          _buildTenseBlock('Present Tense', 'المضارع', table.present),
+          _buildTenseBlock('Present Tense', 'المضارع', table.present, root),
           SizedBox(height: 16),
-          _buildImperativeBlock(table.imperative),
+          _buildImperativeBlock(table.imperative, root),
         ],
       ),
     );
@@ -242,6 +244,7 @@ class WordDetailScreen extends StatelessWidget {
     String titleEn,
     String titleAr,
     List<ConjugationRow> rows,
+    String root,
   ) {
     return Container(
       decoration: BoxDecoration(
@@ -292,26 +295,26 @@ class WordDetailScreen extends StatelessWidget {
               ),
               // Singular row
               TableRow(children: [
-                _tableCell(_findConj(rows, '2nd', 'singular', 'feminine')),
-                _tableCell(_findConj(rows, '2nd', 'singular', 'masculine')),
-                _tableCell(_findConj(rows, '3rd', 'singular', 'feminine')),
-                _tableCell(_findConj(rows, '3rd', 'singular', 'masculine')),
+                _tableCell(_findConj(rows, '2nd', 'singular', 'feminine'), root),
+                _tableCell(_findConj(rows, '2nd', 'singular', 'masculine'), root),
+                _tableCell(_findConj(rows, '3rd', 'singular', 'feminine'), root),
+                _tableCell(_findConj(rows, '3rd', 'singular', 'masculine'), root),
                 _sideHeader('مفرد\nSing.'),
               ]),
               // Dual row — 2nd person dual is gender-neutral in Arabic
               TableRow(children: [
-                _tableCell(_findConj(rows, '2nd', 'dual', 'common')),
-                _tableCell(_findConj(rows, '2nd', 'dual', 'common')),
-                _tableCell(_findConj(rows, '3rd', 'dual', 'feminine')),
-                _tableCell(_findConj(rows, '3rd', 'dual', 'masculine')),
+                _tableCell(_findConj(rows, '2nd', 'dual', 'common'), root),
+                _tableCell(_findConj(rows, '2nd', 'dual', 'common'), root),
+                _tableCell(_findConj(rows, '3rd', 'dual', 'feminine'), root),
+                _tableCell(_findConj(rows, '3rd', 'dual', 'masculine'), root),
                 _sideHeader('مثنى\nDual'),
               ]),
               // Plural row
               TableRow(children: [
-                _tableCell(_findConj(rows, '2nd', 'plural', 'feminine')),
-                _tableCell(_findConj(rows, '2nd', 'plural', 'masculine')),
-                _tableCell(_findConj(rows, '3rd', 'plural', 'feminine')),
-                _tableCell(_findConj(rows, '3rd', 'plural', 'masculine')),
+                _tableCell(_findConj(rows, '2nd', 'plural', 'feminine'), root),
+                _tableCell(_findConj(rows, '2nd', 'plural', 'masculine'), root),
+                _tableCell(_findConj(rows, '3rd', 'plural', 'feminine'), root),
+                _tableCell(_findConj(rows, '3rd', 'plural', 'masculine'), root),
                 _sideHeader('جمع\nPlural'),
               ]),
             ],
@@ -326,6 +329,7 @@ class WordDetailScreen extends StatelessWidget {
                   child: _tableCellWithLabel(
                     'نحن (We)',
                     _findConj(rows, '1st', 'plural', 'common'),
+                    root,
                   ),
                 ),
                 Container(width: 1, height: 50, color: Colors.grey[100]),
@@ -333,6 +337,7 @@ class WordDetailScreen extends StatelessWidget {
                   child: _tableCellWithLabel(
                     'أنا (I)',
                     _findConj(rows, '1st', 'singular', 'common'),
+                    root,
                   ),
                 ),
               ],
@@ -343,7 +348,7 @@ class WordDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildImperativeBlock(List<ConjugationRow> rows) {
+  Widget _buildImperativeBlock(List<ConjugationRow> rows, String root) {
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey[200]!),
@@ -376,6 +381,7 @@ class WordDetailScreen extends StatelessWidget {
                 child: _tableCellWithLabel(
                   'Singular (f)',
                   _findConj(rows, '2nd', 'singular', 'feminine'),
+                  root,
                 ),
               ),
               Container(width: 1, height: 50, color: Colors.grey[100]),
@@ -383,6 +389,7 @@ class WordDetailScreen extends StatelessWidget {
                 child: _tableCellWithLabel(
                   'Singular (m)',
                   _findConj(rows, '2nd', 'singular', 'masculine'),
+                  root,
                 ),
               ),
             ],
@@ -395,6 +402,7 @@ class WordDetailScreen extends StatelessWidget {
             child: _tableCellWithLabel(
               'Dual',
               _findConj(rows, '2nd', 'dual', 'common'),
+              root,
             ),
           ),
           Divider(height: 1, color: Colors.grey[100]),
@@ -406,6 +414,7 @@ class WordDetailScreen extends StatelessWidget {
                 child: _tableCellWithLabel(
                   'Plural (f)',
                   _findConj(rows, '2nd', 'plural', 'feminine'),
+                  root,
                 ),
               ),
               Container(width: 1, height: 50, color: Colors.grey[100]),
@@ -413,6 +422,7 @@ class WordDetailScreen extends StatelessWidget {
                 child: _tableCellWithLabel(
                   'Plural (m)',
                   _findConj(rows, '2nd', 'plural', 'masculine'),
+                  root,
                 ),
               ),
             ],
@@ -457,22 +467,33 @@ class WordDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _tableCell(String arabicText) {
+  Widget _tableCell(String arabicText, String root) {
+    final baseStyle = GoogleFonts.notoNaskhArabic(
+      fontSize: 16,
+      fontWeight: FontWeight.bold,
+    );
     return Padding(
       padding: const EdgeInsets.all(8.0),
-      child: Text(
-        arabicText,
-        textAlign: TextAlign.center,
-        style: GoogleFonts.notoNaskhArabic(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-          color: Colors.black87,
-        ),
-      ),
+      child: arabicText == '-'
+          ? Text('-', textAlign: TextAlign.center, style: baseStyle.copyWith(color: Colors.grey[400]))
+          : RichText(
+              textAlign: TextAlign.center,
+              text: TextSpan(
+                style: baseStyle,
+                children: TextHighlighter.highlightArabicRoot(
+                  arabicText, root,
+                  baseColor: Colors.black87,
+                ),
+              ),
+            ),
     );
   }
 
-  Widget _tableCellWithLabel(String label, String arabicText) {
+  Widget _tableCellWithLabel(String label, String arabicText, String root) {
+    final baseStyle = GoogleFonts.notoNaskhArabic(
+      fontSize: 16,
+      fontWeight: FontWeight.bold,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Column(
@@ -482,14 +503,18 @@ class WordDetailScreen extends StatelessWidget {
             style: GoogleFonts.manrope(fontSize: 10, color: Colors.grey[400]),
           ),
           SizedBox(height: 4),
-          Text(
-            arabicText,
-            style: GoogleFonts.notoNaskhArabic(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
+          arabicText == '-'
+              ? Text('-', style: baseStyle.copyWith(color: Colors.grey[400]))
+              : RichText(
+                  textAlign: TextAlign.center,
+                  text: TextSpan(
+                    style: baseStyle,
+                    children: TextHighlighter.highlightArabicRoot(
+                      arabicText, root,
+                      baseColor: Colors.black87,
+                    ),
+                  ),
+                ),
         ],
       ),
     );

@@ -20,8 +20,9 @@ class Word extends Equatable {
   final String? domain;
   final int? baseFormId;
 
-  // Joined field — primary meaning from meanings table (order_num = 1)
+  // Joined fields — populated by repository queries
   final String? primaryMeaning;
+  final String? baseFormArabic; // form_arabic of the parent (base) entry
 
   const Word({
     required this.id,
@@ -43,6 +44,7 @@ class Word extends Equatable {
     this.domain,
     this.baseFormId,
     this.primaryMeaning,
+    this.baseFormArabic,
   });
 
   factory Word.fromMap(Map<String, dynamic> map) {
@@ -66,6 +68,7 @@ class Word extends Equatable {
       domain: map['domain'] as String?,
       baseFormId: map['base_form_id'] as int?,
       primaryMeaning: map['meaning_text'] as String?,
+      baseFormArabic: map['base_form_arabic'] as String?,
     );
   }
 

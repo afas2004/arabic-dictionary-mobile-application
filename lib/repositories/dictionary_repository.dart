@@ -38,9 +38,10 @@ class DictionaryRepository {
   Future<List<Word>> getCommonWords() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.rawQuery('''
-      SELECT l.*, m.meaning_text
+      SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic
       FROM lexicon l
       LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
+      LEFT JOIN lexicon parent ON l.base_form_id = parent.id
       WHERE l.is_common = 1
       ORDER BY l.frequency DESC
       LIMIT 100
@@ -124,7 +125,7 @@ class DictionaryRepository {
   Future<List<Word>> _directArabicLookup(String stripped) async {
     final db = await database;
     final maps = await db.rawQuery('''
-      SELECT l.*, m.meaning_text,
+      SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic,
         CASE
           WHEN l.form_stripped = ?                  THEN 4
           WHEN l.form_stripped LIKE ? || '%'         THEN 3
@@ -134,6 +135,7 @@ class DictionaryRepository {
         END AS relevance_score
       FROM lexicon l
       LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
+      LEFT JOIN lexicon parent ON l.base_form_id = parent.id
       WHERE l.form_stripped LIKE '%' || ? || '%'
          OR l.root LIKE ? || '%'
       GROUP BY l.form_stripped, l.word_type
@@ -152,9 +154,10 @@ class DictionaryRepository {
 
     if (stemResult.rootForDB != null) {
       final exactRoot = await db.rawQuery('''
-        SELECT l.*, m.meaning_text
+        SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic
         FROM lexicon l
         LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
+        LEFT JOIN lexicon parent ON l.base_form_id = parent.id
         WHERE l.root = ?
         ORDER BY l.is_common DESC, l.frequency DESC
         LIMIT 50
@@ -166,9 +169,10 @@ class DictionaryRepository {
 
       // Handles compound roots like 'وهب-;-هيب'
       final likeRoot = await db.rawQuery('''
-        SELECT l.*, m.meaning_text
+        SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic
         FROM lexicon l
         LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
+        LEFT JOIN lexicon parent ON l.base_form_id = parent.id
         WHERE l.root LIKE '%' || ? || '%'
         ORDER BY l.is_common DESC, l.frequency DESC
         LIMIT 50
@@ -181,9 +185,10 @@ class DictionaryRepository {
 
     if (stemResult.extractedRoot != null) {
       final likeForm = await db.rawQuery('''
-        SELECT l.*, m.meaning_text
+        SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic
         FROM lexicon l
         LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
+        LEFT JOIN lexicon parent ON l.base_form_id = parent.id
         WHERE l.form_stripped LIKE '%' || ? || '%'
         ORDER BY l.is_common DESC, l.frequency DESC
         LIMIT 50
@@ -202,7 +207,11 @@ class DictionaryRepository {
   ///   Tier 2 — per-token exact/boundary matches (deduped against tier 1)
   ///   Tier 3 — per-token substring/related matches (deduped against tiers 1+2)
   Future<List<Word>> _searchEnglish(String query) async {
-    final lowerQuery = query.toLowerCase().trim();
+    String lowerQuery = query.toLowerCase().trim();
+    // Strip "to " prefix — common when users type English verb infinitives
+    if (lowerQuery.startsWith('to ') && lowerQuery.length > 3) {
+      lowerQuery = lowerQuery.substring(3).trim();
+    }
 
     // Tokenize — skip single-char noise words ("a", "I")
     final tokens = lowerQuery
@@ -271,7 +280,7 @@ class DictionaryRepository {
     final db = await database;
     final maps = await db.rawQuery('''
       SELECT * FROM (
-        SELECT l.*, m.meaning_text,
+        SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic,
           CASE
             WHEN lower(m.meaning_text) = ?                      THEN 5
             WHEN lower(m.meaning_text) LIKE ? || ' %'           THEN 4
@@ -284,6 +293,7 @@ class DictionaryRepository {
           END AS relevance_score
         FROM lexicon l
         JOIN meanings m ON m.lexicon_id = l.id
+        LEFT JOIN lexicon parent ON l.base_form_id = parent.id
         WHERE lower(m.meaning_text) LIKE '%' || ? || '%'
         GROUP BY l.form_stripped, l.word_type
       ) AS scored
@@ -305,7 +315,7 @@ class DictionaryRepository {
     final db = await database;
     final maps = await db.rawQuery('''
       SELECT * FROM (
-        SELECT l.*, m.meaning_text,
+        SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic,
           CASE
             WHEN lower(m.meaning_text) = ?                      THEN 5
             WHEN lower(m.meaning_text) LIKE ? || ' %'           THEN 4
@@ -318,6 +328,7 @@ class DictionaryRepository {
           END AS relevance_score
         FROM lexicon l
         JOIN meanings m ON m.lexicon_id = l.id
+        LEFT JOIN lexicon parent ON l.base_form_id = parent.id
         WHERE lower(m.meaning_text) LIKE '%' || ? || '%'
         GROUP BY l.form_stripped, l.word_type
       ) AS scored
@@ -344,10 +355,11 @@ class DictionaryRepository {
   Future<List<Word>> getRelatedForms(int wordId) async {
     final db = await database;
     final maps = await db.rawQuery('''
-      SELECT l.*, m.meaning_text
+      SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic
       FROM related_forms rf
       JOIN lexicon l ON l.id = rf.related_word_id
       LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
+      LEFT JOIN lexicon parent ON l.base_form_id = parent.id
       WHERE rf.source_word_id = ?
       ORDER BY l.is_common DESC, l.frequency DESC
     ''', [wordId]);
