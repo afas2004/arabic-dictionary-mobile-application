@@ -28,9 +28,9 @@ part 'triverbtable_data.dart';
 
 class ConjugationRow {
   final int     baseWordId;
-  final String  conjugatedArabic;
+  final String  formArabic;
   final String  tense;
-  final String? person;
+  final String? pronoun;
   final String  number;
   final String? gender;
   final String  voice;
@@ -39,9 +39,9 @@ class ConjugationRow {
 
   const ConjugationRow({
     required this.baseWordId,
-    required this.conjugatedArabic,
+    required this.formArabic,
     required this.tense,
-    this.person,
+    this.pronoun,
     required this.number,
     this.gender,
     required this.voice,
@@ -50,27 +50,27 @@ class ConjugationRow {
   });
 
   Map<String, dynamic> toMap() => {
-    'base_word_id':      baseWordId,
-    'conjugated_arabic': conjugatedArabic,
-    'tense':             tense,
-    'person':            person,
-    'number':            number,
-    'gender':            gender,
-    'voice':             voice,
-    'mood':              mood,
-    'display_order':     displayOrder,
+    'base_word_id':  baseWordId,
+    'form_arabic':   formArabic,
+    'tense':         tense,
+    'pronoun':       pronoun,
+    'number':        number,
+    'gender':        gender,
+    'voice':         voice,
+    'mood':          mood,
+    'display_order': displayOrder,
   };
 
   factory ConjugationRow.fromMap(Map<String, dynamic> m) => ConjugationRow(
-    baseWordId:       m['base_word_id'] as int,
-    conjugatedArabic: m['conjugated_arabic'] as String,
-    tense:            m['tense'] as String,
-    person:           m['person'] as String?,
-    number:           m['number'] as String,
-    gender:           m['gender'] as String?,
-    voice:            m['voice'] as String,
-    mood:             m['mood'] as String,
-    displayOrder:     m['display_order'] as int,
+    baseWordId:  m['base_word_id'] as int,
+    formArabic:  m['form_arabic'] as String,
+    tense:       m['tense'] as String,
+    pronoun:     m['pronoun'] as String?,
+    number:      m['number'] as String,
+    gender:      m['gender'] as String?,
+    voice:       m['voice'] as String,
+    mood:        m['mood'] as String,
+    displayOrder: m['display_order'] as int,
   );
 }
 
@@ -253,30 +253,30 @@ List<ConjugationRow> _generateConjugations(
         ? pastStem.substring(0, pastStem.length - 1)
         : pastStem;
     rows.add(ConjugationRow(
-      baseWordId:       verbId,
-      conjugatedArabic: '$stem${s.suffix}',
-      tense:            'past',
-      person:           s.person,
-      number:           s.number,
-      gender:           s.gender,
-      voice:            'active',
-      mood:             'indicative',
-      displayOrder:     s.displayOrder,
+      baseWordId:  verbId,
+      formArabic:  '$stem${s.suffix}',
+      tense:       'past',
+      pronoun:     s.person,
+      number:      s.number,
+      gender:      s.gender,
+      voice:       'active',
+      mood:        'indicative',
+      displayOrder: s.displayOrder,
     ));
   }
 
   // ── Present tense ──
   for (final a in _presentAffixes) {
     rows.add(ConjugationRow(
-      baseWordId:       verbId,
-      conjugatedArabic: '${a.prefix}$presentStem${a.suffix}',
-      tense:            'present',
-      person:           a.person,
-      number:           a.number,
-      gender:           a.gender,
-      voice:            'active',
-      mood:             'indicative',
-      displayOrder:     a.displayOrder + 13,
+      baseWordId:  verbId,
+      formArabic:  '${a.prefix}$presentStem${a.suffix}',
+      tense:       'present',
+      pronoun:     a.person,
+      number:      a.number,
+      gender:      a.gender,
+      voice:       'active',
+      mood:        'indicative',
+      displayOrder: a.displayOrder + 13,
     ));
   }
 
@@ -286,15 +286,15 @@ List<ConjugationRow> _generateConjugations(
 
   for (final imp in _imperativeForms) {
     rows.add(ConjugationRow(
-      baseWordId:       verbId,
-      conjugatedArabic: '$impPrefix$presentStem${imp.suffix}',
-      tense:            'imperative',
-      person:           '2nd',
-      number:           imp.number,
-      gender:           imp.gender,
-      voice:            'active',
-      mood:             'imperative',
-      displayOrder:     imp.displayOrder + 26,
+      baseWordId:  verbId,
+      formArabic:  '$impPrefix$presentStem${imp.suffix}',
+      tense:       'imperative',
+      pronoun:     '2nd',
+      number:      imp.number,
+      gender:      imp.gender,
+      voice:       'active',
+      mood:        'imperative',
+      displayOrder: imp.displayOrder + 26,
     ));
   }
 

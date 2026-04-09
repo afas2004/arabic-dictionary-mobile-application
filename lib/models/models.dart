@@ -17,6 +17,8 @@ class Word extends Equatable {
   final int frequency;
   final bool isCommon;
   final bool isIrregular;
+  final String? domain;
+  final int? baseFormId;
 
   // Joined field — primary meaning from meanings table (order_num = 1)
   final String? primaryMeaning;
@@ -38,6 +40,8 @@ class Word extends Equatable {
     required this.frequency,
     required this.isCommon,
     required this.isIrregular,
+    this.domain,
+    this.baseFormId,
     this.primaryMeaning,
   });
 
@@ -59,12 +63,14 @@ class Word extends Equatable {
       frequency: map['frequency'] as int? ?? 1,
       isCommon: (map['is_common'] as int? ?? 0) == 1,
       isIrregular: (map['is_irregular'] as int? ?? 0) == 1,
+      domain: map['domain'] as String?,
+      baseFormId: map['base_form_id'] as int?,
       primaryMeaning: map['meaning_text'] as String?,
     );
   }
 
   @override
-  List<Object?> get props => [id, formArabic];
+  List<Object?> get props => [id, formArabic, baseFormId];
 }
 
 class Meaning extends Equatable {
@@ -99,21 +105,21 @@ class Meaning extends Equatable {
 class Conjugation extends Equatable {
   final int id;
   final int baseWordId;
-  final String conjugatedArabic;
+  final String formArabic;
   final String tense;
-  final String? person;
+  final String? pronoun;
   final String number;
   final String? gender;
   final String voice;
   final String? mood;
-  final int displayOrder; // ← added: maps to display_order in DB
+  final int displayOrder;
 
   const Conjugation({
     required this.id,
     required this.baseWordId,
-    required this.conjugatedArabic,
+    required this.formArabic,
     required this.tense,
-    this.person,
+    this.pronoun,
     required this.number,
     this.gender,
     required this.voice,
@@ -125,9 +131,9 @@ class Conjugation extends Equatable {
     return Conjugation(
       id: map['id'] as int? ?? 0,
       baseWordId: map['base_word_id'] as int,
-      conjugatedArabic: map['conjugated_arabic'] as String,
+      formArabic: map['form_arabic'] as String,
       tense: map['tense'] as String,
-      person: map['person'] as String?,
+      pronoun: map['pronoun'] as String?,
       number: map['number'] as String,
       gender: map['gender'] as String?,
       voice: map['voice'] as String? ?? 'active',
@@ -139,9 +145,9 @@ class Conjugation extends Equatable {
   Map<String, dynamic> toMap() {
     return {
       'base_word_id': baseWordId,
-      'conjugated_arabic': conjugatedArabic,
+      'form_arabic': formArabic,
       'tense': tense,
-      'person': person,
+      'pronoun': pronoun,
       'number': number,
       'gender': gender,
       'voice': voice,
@@ -151,5 +157,5 @@ class Conjugation extends Equatable {
   }
 
   @override
-  List<Object?> get props => [conjugatedArabic, tense, person, number, gender];
+  List<Object?> get props => [formArabic, tense, pronoun, number, gender];
 }

@@ -24,7 +24,7 @@ class _TestRepository {
 
     // Direct path to your DB in the assets folder
     const dbPath =
-        r'C:\Users\afahm\OneDrive\Documents\sem 5\CSP600 FYP\dataset\arabic_dictionary_v7.db';
+        r'C:\Users\afahm\OneDrive\Documents\sem 5\CSP600 FYP\dataset\arabic_dictionary_v9.db';
 
     final db = await databaseFactoryFfi.openDatabase(
       dbPath,

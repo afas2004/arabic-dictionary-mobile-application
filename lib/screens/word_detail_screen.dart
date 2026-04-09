@@ -229,10 +229,10 @@ class WordDetailScreen extends StatelessWidget {
     try {
       return rows
           .firstWhere((r) =>
-              r.person == person &&
+              r.pronoun == person &&
               r.number == number &&
               r.gender == gender)
-          .conjugatedArabic;
+          .formArabic;
     } catch (_) {
       return '-';
     }

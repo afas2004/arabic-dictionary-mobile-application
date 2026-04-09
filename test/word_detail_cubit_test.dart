@@ -35,9 +35,10 @@ void main() {
       CREATE TABLE conjugations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         base_word_id INTEGER NOT NULL,
-        conjugated_arabic TEXT NOT NULL,
+        form_arabic TEXT NOT NULL,
+        form_stripped TEXT,
         tense TEXT NOT NULL,
-        person TEXT,
+        pronoun TEXT,
         number TEXT NOT NULL,
         gender TEXT,
         voice TEXT NOT NULL DEFAULT 'active',
@@ -69,7 +70,7 @@ void main() {
 
       print('--- GENERATED PAST TENSE FOR ${dummyVerb.formArabic} ---');
       for (var row in table.past) {
-        print('${row.person} ${row.number} ${row.gender}: ${row.conjugatedArabic}');
+        print('${row.pronoun} ${row.number} ${row.gender}: ${row.formArabic}');
       }
       
       // The engine should generate exactly 13 past tense forms
