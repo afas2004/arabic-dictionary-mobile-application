@@ -55,23 +55,57 @@ class ConjugationRow {
     'tense':         tense,
     'pronoun':       pronoun,
     'number':        number,
-    'gender':        gender,
+    // gender is not a column in v9 conjugations schema — kept in-memory only
     'voice':         voice,
     'mood':          mood,
     'display_order': displayOrder,
   };
 
-  factory ConjugationRow.fromMap(Map<String, dynamic> m) => ConjugationRow(
-    baseWordId:  m['base_word_id'] as int,
-    formArabic:  m['form_arabic'] as String,
-    tense:       m['tense'] as String,
-    pronoun:     m['pronoun'] as String?,
-    number:      m['number'] as String,
-    gender:      m['gender'] as String?,
-    voice:       m['voice'] as String,
-    mood:        m['mood'] as String,
-    displayOrder: m['display_order'] as int,
-  );
+  factory ConjugationRow.fromMap(Map<String, dynamic> m) {
+    final displayOrder = m['display_order'] as int? ?? 0;
+    return ConjugationRow(
+      baseWordId:   m['base_word_id'] as int,
+      formArabic:   m['form_arabic'] as String,
+      tense:        m['tense'] as String,
+      pronoun:      m['pronoun'] as String?,
+      number:       m['number'] as String,
+      // gender is not stored in v9 DB; derive from display_order on cache read
+      gender:       m['gender'] as String? ?? _genderFromDisplayOrder(displayOrder),
+      voice:        m['voice'] as String,
+      mood:         m['mood'] as String,
+      displayOrder: displayOrder,
+    );
+  }
+
+  /// Derives gender from display_order so cache reads work without a gender column.
+  /// Past/present share a 13-entry pattern (present is offset +13).
+  /// Imperative uses display_order 27–31.
+  static String? _genderFromDisplayOrder(int d) {
+    // Past (1–13) and present (14–26) share the same gender pattern
+    const pattern = [
+      '',           // 0 unused
+      'masculine',  // 1  — 3rd singular
+      'feminine',   // 2  — 3rd singular
+      'masculine',  // 3  — 3rd dual
+      'feminine',   // 4  — 3rd dual
+      'masculine',  // 5  — 3rd plural
+      'feminine',   // 6  — 3rd plural
+      'masculine',  // 7  — 2nd singular
+      'feminine',   // 8  — 2nd singular
+      'common',     // 9  — 2nd dual
+      'masculine',  // 10 — 2nd plural
+      'feminine',   // 11 — 2nd plural
+      'common',     // 12 — 1st singular
+      'common',     // 13 — 1st plural
+    ];
+    if (d >= 1 && d <= 13)  return pattern[d];
+    if (d >= 14 && d <= 26) return pattern[d - 13];
+    // Imperative: display_order 27–31
+    const impGender = ['masculine', 'feminine', 'common', 'masculine', 'feminine'];
+    final i = d - 27;
+    if (i >= 0 && i < impGender.length) return impGender[i];
+    return null;
+  }
 }
 
 class ConjugationTable {
