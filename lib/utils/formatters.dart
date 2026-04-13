@@ -49,6 +49,35 @@ class Formatters {
     return known[verbForm]; // null for unrecognized codes
   }
 
+  /// Detects verb form from the surface form (formStripped) rather than
+  /// relying on the DB verb_form column, which may contain Buckwalter codes.
+  /// Returns a display label like "Form IV" or null for Form I / non-verbs.
+  static String? detectVerbFormLabel(String formStripped) {
+    // Strip diacritics to work on pure consonants
+    final s = formStripped.replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '');
+    if (s.length <= 3) return null; // Form I — no label needed
+
+    if (s.length == 4) {
+      if (s[0] == '\u0623') return 'Form IV';  // أ___ (alef+hamza prefix)
+      if (s[1] == '\u0627') return 'Form III'; // _ا__ (alef at pos 1)
+      if (s[0] == '\u062A') return 'Form V';   // ت___ (ta prefix)
+      return null;
+    }
+    if (s.length == 5) {
+      // ا_ت__ — alef at pos 0 + ta at pos 2 → Form VIII
+      if (s[0] == '\u0627' && s[2] == '\u062A') return 'Form VIII';
+      return null;
+    }
+    if (s.length == 6) {
+      // است___ — alef+sin+ta prefix → Form X
+      if (s[0] == '\u0627' && s[1] == '\u0633' && s[2] == '\u062A') {
+        return 'Form X';
+      }
+      return null;
+    }
+    return null;
+  }
+
   // ── Root display logic ────────────────────────────────────────────────────
 
   /// Returns true if the base-form reference should be shown on the word tile.
@@ -89,16 +118,26 @@ class Formatters {
     // Extract only the letter characters from the dash-separated root
     final letters = word.root.replaceAll('-', '');
 
-    // Weak (mu'tal) radicals
-    if (letters.contains('و') || letters.contains('ي')) return true;
-
-    // Hamzated radicals
+    // Hamzated radicals — always flag as weak
     if (letters.contains('ء') ||
         letters.contains('أ') ||
         letters.contains('إ') ||
         letters.contains('آ')) return true;
 
-    return false;
+    // No weak radicals at all — strong root
+    if (!letters.contains('و') && !letters.contains('ي')) return false;
+
+    // Form III (ا at pos 1) and Form V (ت at pos 0): R2=و/ي acts as a
+    // regular consonant that receives shadda or stays phonetically stable —
+    // conjugates as strong, so don't show "Weak Root" badge.
+    final s =
+        word.formStripped.replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '');
+    if (s.length == 4) {
+      if (s[1] == '\u0627') return false; // Form III: _ا__
+      if (s[0] == '\u062A') return false; // Form V:  ت___
+    }
+
+    return true;
   }
 
   // ── Meaning display ───────────────────────────────────────────────────────

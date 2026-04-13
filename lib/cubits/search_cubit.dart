@@ -38,13 +38,18 @@ class SearchCubit extends Cubit<SearchState> {
   SearchCubit({required this.repository}) : super(SearchEmpty());
 
   Future<void> loadInitial() async {
-    // Point 1: No input = no results. Show empty state.
-    emit(SearchEmpty());
+    emit(SearchLoading());
+    try {
+      final words = await repository.getCommonWords();
+      emit(SearchLoaded(words, ''));
+    } catch (_) {
+      emit(SearchEmpty());
+    }
   }
 
   Future<void> search(String query) async {
     if (query.trim().isEmpty) {
-      emit(SearchEmpty());
+      loadInitial();
       return;
     }
     

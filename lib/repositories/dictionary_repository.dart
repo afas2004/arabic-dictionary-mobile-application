@@ -30,7 +30,14 @@ class DictionaryRepository {
       await File(path).writeAsBytes(bytes, flush: true);
     }
 
-    return await openDatabase(path);
+    final db = await openDatabase(path);
+
+    // Ensure conjugations lookup index exists (idempotent)
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_conj_base ON conjugations(base_word_id)',
+    );
+
+    return db;
   }
 
   // ── Common words ───────────────────────────────────────────────────────────
@@ -125,21 +132,25 @@ class DictionaryRepository {
   Future<List<Word>> _directArabicLookup(String stripped) async {
     final db = await database;
     final maps = await db.rawQuery('''
-      SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic,
+      SELECT l2.*, m.meaning_text, parent.form_arabic AS base_form_arabic,
         CASE
-          WHEN l.form_stripped = ?                  THEN 4
-          WHEN l.form_stripped LIKE ? || '%'         THEN 3
-          WHEN l.form_stripped LIKE '%' || ? || '%'  THEN 2
-          WHEN l.root LIKE ? || '%'                  THEN 1
+          WHEN l2.form_stripped = ?                  THEN 4
+          WHEN l2.form_stripped LIKE ? || '%'         THEN 3
+          WHEN l2.form_stripped LIKE '%' || ? || '%'  THEN 2
+          WHEN l2.root LIKE ? || '%'                  THEN 1
           ELSE 0
         END AS relevance_score
-      FROM lexicon l
-      LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
-      LEFT JOIN lexicon parent ON l.base_form_id = parent.id
-      WHERE l.form_stripped LIKE '%' || ? || '%'
-         OR l.root LIKE ? || '%'
-      GROUP BY l.form_stripped, l.word_type
-      ORDER BY relevance_score DESC, l.is_common DESC, l.frequency DESC
+      FROM (
+        SELECT MIN(id) AS min_id
+        FROM lexicon
+        WHERE form_stripped LIKE '%' || ? || '%'
+           OR root LIKE ? || '%'
+        GROUP BY form_stripped, word_type
+      ) g
+      JOIN lexicon l2 ON l2.id = g.min_id
+      LEFT JOIN meanings m ON l2.id = m.lexicon_id AND m.order_num = 1
+      LEFT JOIN lexicon parent ON l2.base_form_id = parent.id
+      ORDER BY relevance_score DESC, l2.is_common DESC, l2.frequency DESC
       LIMIT 50
     ''', [stripped, stripped, stripped, stripped, stripped, stripped]);
     return maps.map((m) => Word.fromMap(m)).toList();
@@ -279,25 +290,28 @@ class DictionaryRepository {
   Future<List<Word>> _searchEnglishPhrase(String phrase) async {
     final db = await database;
     final maps = await db.rawQuery('''
-      SELECT * FROM (
-        SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic,
-          CASE
-            WHEN lower(m.meaning_text) = ?                      THEN 5
-            WHEN lower(m.meaning_text) LIKE ? || ' %'           THEN 4
-            WHEN lower(m.meaning_text) LIKE '% ' || ?           THEN 4
-            WHEN lower(m.meaning_text) LIKE '% ' || ? || ' %'   THEN 3
-            WHEN lower(m.meaning_text) LIKE '% ' || ? || ',%'   THEN 3
-            WHEN lower(m.meaning_text) LIKE '% ' || ? || ';%'   THEN 3
-            WHEN lower(m.meaning_text) LIKE '%' || ? || '%'      THEN 2
-            ELSE 0
-          END AS relevance_score
+      SELECT l2.*, m.meaning_text, parent.form_arabic AS base_form_arabic,
+        CASE
+          WHEN lower(m.meaning_text) = ?                      THEN 5
+          WHEN lower(m.meaning_text) LIKE ? || ' %'           THEN 4
+          WHEN lower(m.meaning_text) LIKE '% ' || ?           THEN 4
+          WHEN lower(m.meaning_text) LIKE '% ' || ? || ' %'   THEN 3
+          WHEN lower(m.meaning_text) LIKE '% ' || ? || ',%'   THEN 3
+          WHEN lower(m.meaning_text) LIKE '% ' || ? || ';%'   THEN 3
+          WHEN lower(m.meaning_text) LIKE '%' || ? || '%'      THEN 2
+          ELSE 0
+        END AS relevance_score
+      FROM (
+        SELECT MIN(l.id) AS min_id
         FROM lexicon l
         JOIN meanings m ON m.lexicon_id = l.id
-        LEFT JOIN lexicon parent ON l.base_form_id = parent.id
         WHERE lower(m.meaning_text) LIKE '%' || ? || '%'
         GROUP BY l.form_stripped, l.word_type
-      ) AS scored
-      ORDER BY scored.relevance_score DESC, scored.is_common DESC, scored.frequency DESC
+      ) g
+      JOIN lexicon l2 ON l2.id = g.min_id
+      JOIN meanings m ON m.lexicon_id = l2.id AND m.order_num = 1
+      LEFT JOIN lexicon parent ON l2.base_form_id = parent.id
+      ORDER BY relevance_score DESC, l2.is_common DESC, l2.frequency DESC
       LIMIT 50
     ''', [phrase, phrase, phrase, phrase, phrase, phrase, phrase, phrase]);
     return maps.map((m) => Word.fromMap(m)).toList();
@@ -314,28 +328,47 @@ class DictionaryRepository {
   }) async {
     final db = await database;
     final maps = await db.rawQuery('''
-      SELECT * FROM (
-        SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic,
-          CASE
-            WHEN lower(m.meaning_text) = ?                      THEN 5
-            WHEN lower(m.meaning_text) LIKE ? || ' %'           THEN 4
-            WHEN lower(m.meaning_text) LIKE '% ' || ?           THEN 4
-            WHEN lower(m.meaning_text) LIKE '% ' || ? || ' %'   THEN 3
-            WHEN lower(m.meaning_text) LIKE '% ' || ? || ',%'   THEN 3
-            WHEN lower(m.meaning_text) LIKE '% ' || ? || ';%'   THEN 3
-            WHEN lower(m.meaning_text) LIKE '%' || ? || '%'      THEN 2
-            ELSE 0
-          END AS relevance_score
+      SELECT l2.*, m.meaning_text, parent.form_arabic AS base_form_arabic,
+        CASE
+          WHEN lower(m.meaning_text) = ?                      THEN 5
+          WHEN lower(m.meaning_text) LIKE ? || ' %'           THEN 4
+          WHEN lower(m.meaning_text) LIKE '% ' || ?           THEN 4
+          WHEN lower(m.meaning_text) LIKE '% ' || ? || ' %'   THEN 3
+          WHEN lower(m.meaning_text) LIKE '% ' || ? || ',%'   THEN 3
+          WHEN lower(m.meaning_text) LIKE '% ' || ? || ';%'   THEN 3
+          WHEN lower(m.meaning_text) LIKE '%' || ? || '%'      THEN 2
+          ELSE 0
+        END AS relevance_score
+      FROM (
+        SELECT MIN(l.id) AS min_id
         FROM lexicon l
         JOIN meanings m ON m.lexicon_id = l.id
-        LEFT JOIN lexicon parent ON l.base_form_id = parent.id
         WHERE lower(m.meaning_text) LIKE '%' || ? || '%'
         GROUP BY l.form_stripped, l.word_type
-      ) AS scored
-      WHERE scored.relevance_score >= ?
-      ORDER BY scored.relevance_score DESC, scored.is_common DESC, scored.frequency DESC
+      ) g
+      JOIN lexicon l2 ON l2.id = g.min_id
+      JOIN meanings m ON m.lexicon_id = l2.id AND m.order_num = 1
+      LEFT JOIN lexicon parent ON l2.base_form_id = parent.id
+      WHERE (
+        CASE
+          WHEN lower(m.meaning_text) = ?                      THEN 5
+          WHEN lower(m.meaning_text) LIKE ? || ' %'           THEN 4
+          WHEN lower(m.meaning_text) LIKE '% ' || ?           THEN 4
+          WHEN lower(m.meaning_text) LIKE '% ' || ? || ' %'   THEN 3
+          WHEN lower(m.meaning_text) LIKE '% ' || ? || ',%'   THEN 3
+          WHEN lower(m.meaning_text) LIKE '% ' || ? || ';%'   THEN 3
+          WHEN lower(m.meaning_text) LIKE '%' || ? || '%'      THEN 2
+          ELSE 0
+        END
+      ) >= ?
+      ORDER BY relevance_score DESC, l2.is_common DESC, l2.frequency DESC
       LIMIT 50
-    ''', [token, token, token, token, token, token, token, token, minScore]);
+    ''', [
+      token, token, token, token, token, token, token, // outer CASE (7)
+      token,                                            // inner WHERE LIKE (1)
+      token, token, token, token, token, token, token, // WHERE CASE (7)
+      minScore,                                         // >= minScore (1)
+    ]);
     return maps.map((m) => Word.fromMap(m)).toList();
   }
 
@@ -364,28 +397,6 @@ class DictionaryRepository {
       ORDER BY l.is_common DESC, l.frequency DESC
     ''', [wordId]);
     return maps.map((m) => Word.fromMap(m)).toList();
-  }
-
-  // ── Conjugation cache ──────────────────────────────────────────────────────
-
-  Future<List<Conjugation>> getConjugations(int wordId) async {
-    final db = await database;
-    final maps = await db.query(
-      'conjugations',
-      where: 'base_word_id = ?',
-      whereArgs: [wordId],
-      orderBy: 'display_order ASC',
-    );
-    return maps.map((m) => Conjugation.fromMap(m)).toList();
-  }
-
-  Future<void> saveConjugations(List<Conjugation> conjugations) async {
-    final db = await database;
-    final Batch batch = db.batch();
-    for (final conj in conjugations) {
-      batch.insert('conjugations', conj.toMap());
-    }
-    await batch.commit(noResult: true);
   }
 
   // ── Internal helpers ───────────────────────────────────────────────────────

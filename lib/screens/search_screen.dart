@@ -1,5 +1,7 @@
 // lib/screens/search_screen.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -18,11 +20,19 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   bool _isArabicInput = true; // tracks current script for TextField direction
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
     context.read<SearchCubit>().loadInitial();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -58,7 +68,10 @@ class _SearchScreenState extends State<SearchScreen> {
                 } else if (val.isEmpty && !_isArabicInput) {
                   setState(() => _isArabicInput = true);
                 }
-                context.read<SearchCubit>().search(val);
+                _debounce?.cancel();
+                _debounce = Timer(const Duration(milliseconds: 300), () {
+                  context.read<SearchCubit>().search(val);
+                });
               },
               decoration: InputDecoration(
                 hintText: 'ابحث عن كلمة...',
@@ -210,8 +223,8 @@ class _SearchScreenState extends State<SearchScreen> {
                           // both direct matches and stemmer fallback results).
                           // English: no Arabic highlight needed.
                           children: isArabicSearch
-                              ? TextHighlighter.highlightArabicRoot(
-                                  word.formArabic, word.root,
+                              ? TextHighlighter.highlightArabicBaseForm(
+                                  word.formArabic, word.formStripped,
                                   baseColor: Colors.black87)
                               : [
                                   TextSpan(
@@ -252,9 +265,9 @@ class _SearchScreenState extends State<SearchScreen> {
                         style: GoogleFonts.manrope(
                             fontSize: 11, color: Colors.grey[500]),
                       ),
-                      if (Formatters.formatVerbForm(word.verbForm) != null)
+                      if (Formatters.detectVerbFormLabel(word.formStripped) != null)
                         Text(
-                          ' • ${Formatters.formatVerbForm(word.verbForm)!}',
+                          ' • ${Formatters.detectVerbFormLabel(word.formStripped)!}',
                           style: GoogleFonts.manrope(
                               fontSize: 11, color: Colors.grey[500]),
                         ),
