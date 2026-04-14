@@ -32,17 +32,7 @@ class WordDetailScreen extends StatelessWidget {
             onPressed: () => Navigator.pop(context),
           ),
           centerTitle: true,
-          title: Text(
-            word.baseFormId != null
-                ? (word.baseFormArabic ?? word.root.replaceAll('-', ''))
-                : (word.wordType == 'base_verb'
-                    ? word.root.replaceAll('-', '')
-                    : ''),
-            style: GoogleFonts.notoNaskhArabic(
-              color: Colors.black87,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          title: const SizedBox.shrink(),
           actions: [
             IconButton(
               icon: Icon(Icons.star_border, color: Color(0xFF1976D2)),
@@ -88,7 +78,7 @@ class WordDetailScreen extends StatelessWidget {
                         ),
                       ),
                       _buildConjugationGrids(
-                          state.conjugationTable!, state.word.formStripped),
+                          state.conjugationTable!, state.word),
                     ],
                     SizedBox(height: 48),
                   ],
@@ -104,10 +94,56 @@ class WordDetailScreen extends StatelessWidget {
 
   // ── Header ──────────────────────────────────────────────────────────────────
 
+  // ── Mutation letter helper ───────────────────────────────────────────────────
+  //
+  // Returns the set of letters that appear in conjugated forms as a result of
+  // root weakness (hollow or defective).  These are coloured red in cells;
+  // true root radicals remain blue; all other letters stay grey.
+
+  static Set<String> _mutationLetters(Word word) {
+    final parts = word.root
+        .split('-')
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.length != 3) return {};
+
+    final r2 = parts[1];
+    final r3 = parts[2];
+    const weak = {'\u0648', '\u064A'}; // و ي
+
+    // Hollow root (R2 is weak)
+    if (weak.contains(r2)) {
+      // Form III / Form V with hollow R2: و is a plain consonant → no mutations
+      final s = word.formStripped
+          .replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '');
+      final isFormIII = s.length == 4 && s.codeUnitAt(1) == 0x0627;
+      final isFormV   = s.length == 4 && s.codeUnitAt(0) == 0x062A;
+      if (isFormIII || isFormV) return {};
+
+      // R2=و:  ا  appears as past-long vowel (mutation)
+      //        ي  appears in present kasra context (و→ي)
+      // R2=ي:  ا  appears as past-long vowel only; ي is the root letter itself
+      return r2 == '\u0648'
+          ? {'\u0627', '\u064A'} // ا + ي
+          : {'\u0627'};          // ا only
+    }
+
+    // Defective root (R3 is weak)
+    if (weak.contains(r3)) {
+      return {'\u0649'}; // ى  alef-maqsura (U+0649) replaces R3 in past 3m.sg
+    }
+
+    return {};
+  }
+
   Widget _buildHeader(Word word) {
     final readableType = Formatters.formatWordType(word.wordType);
     final bool showRoot = Formatters.shouldDisplayRoot(word);
     final bool isWeak   = Formatters.isWeakRoot(word);
+
+    // Show root+mutation highlighting for any word with a triliteral root
+    final triRoot = word.root.split('-').where((p) => p.isNotEmpty).length == 3;
+    final mutations = _mutationLetters(word);
 
     return Container(
       width: double.infinity,
@@ -115,17 +151,18 @@ class WordDetailScreen extends StatelessWidget {
       padding: EdgeInsets.symmetric(vertical: 24, horizontal: 16),
       child: Column(
         children: [
-          // Arabic form — root letters highlighted in blue if strong root
-          (showRoot && !isWeak)
+          // Arabic form — root letters blue, mutation letters red, rest grey
+          triRoot
               ? RichText(
                   text: TextSpan(
                     style: GoogleFonts.notoNaskhArabic(
                       fontSize: 40,
                       fontWeight: FontWeight.bold,
                     ),
-                    children: TextHighlighter.highlightArabicBaseForm(
+                    children: TextHighlighter.highlightRootWithMutations(
                       word.formArabic,
-                      word.formStripped,
+                      word.root,
+                      mutationLetters: mutations,
                     ),
                   ),
                 )
@@ -181,6 +218,7 @@ class WordDetailScreen extends StatelessWidget {
                 Text('•', style: TextStyle(color: Colors.grey)),
                 Text(
                   Formatters.detectVerbFormLabel(word.formStripped)!,
+                  textDirection: TextDirection.ltr,
                   style:
                       GoogleFonts.manrope(fontSize: 12, color: Colors.black54),
                 ),
@@ -230,16 +268,16 @@ class WordDetailScreen extends StatelessWidget {
 
   // ── Conjugation grids ────────────────────────────────────────────────────────
 
-  Widget _buildConjugationGrids(ConjugationTable table, String formStripped) {
+  Widget _buildConjugationGrids(ConjugationTable table, Word word) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12.0),
       child: Column(
         children: [
-          _buildTenseBlock('Past Tense', 'الماضي', table.past, formStripped),
+          _buildTenseBlock('Past Tense', 'الماضي', table.past, word),
           SizedBox(height: 16),
-          _buildTenseBlock('Present Tense', 'المضارع', table.present, formStripped),
+          _buildTenseBlock('Present Tense', 'المضارع', table.present, word),
           SizedBox(height: 16),
-          _buildImperativeBlock(table.imperative, formStripped),
+          _buildImperativeBlock(table.imperative, word),
         ],
       ),
     );
@@ -269,7 +307,7 @@ class WordDetailScreen extends StatelessWidget {
     String titleEn,
     String titleAr,
     List<ConjugationRow> rows,
-    String formStripped,
+    Word word,
   ) {
     return Container(
       decoration: BoxDecoration(
@@ -320,26 +358,26 @@ class WordDetailScreen extends StatelessWidget {
               ),
               // Singular row
               TableRow(children: [
-                _tableCell(_findConj(rows, '2nd', 'singular', 'feminine'), formStripped),
-                _tableCell(_findConj(rows, '2nd', 'singular', 'masculine'), formStripped),
-                _tableCell(_findConj(rows, '3rd', 'singular', 'feminine'), formStripped),
-                _tableCell(_findConj(rows, '3rd', 'singular', 'masculine'), formStripped),
+                _tableCell(_findConj(rows, '2nd', 'singular', 'feminine'), word),
+                _tableCell(_findConj(rows, '2nd', 'singular', 'masculine'), word),
+                _tableCell(_findConj(rows, '3rd', 'singular', 'feminine'), word),
+                _tableCell(_findConj(rows, '3rd', 'singular', 'masculine'), word),
                 _sideHeader('مفرد\nSing.'),
               ]),
               // Dual row — 2nd person dual is gender-neutral in Arabic
               TableRow(children: [
-                _tableCell(_findConj(rows, '2nd', 'dual', 'common'), formStripped),
-                _tableCell(_findConj(rows, '2nd', 'dual', 'common'), formStripped),
-                _tableCell(_findConj(rows, '3rd', 'dual', 'feminine'), formStripped),
-                _tableCell(_findConj(rows, '3rd', 'dual', 'masculine'), formStripped),
+                _tableCell(_findConj(rows, '2nd', 'dual', 'common'), word),
+                _tableCell(_findConj(rows, '2nd', 'dual', 'common'), word),
+                _tableCell(_findConj(rows, '3rd', 'dual', 'feminine'), word),
+                _tableCell(_findConj(rows, '3rd', 'dual', 'masculine'), word),
                 _sideHeader('مثنى\nDual'),
               ]),
               // Plural row
               TableRow(children: [
-                _tableCell(_findConj(rows, '2nd', 'plural', 'feminine'), formStripped),
-                _tableCell(_findConj(rows, '2nd', 'plural', 'masculine'), formStripped),
-                _tableCell(_findConj(rows, '3rd', 'plural', 'feminine'), formStripped),
-                _tableCell(_findConj(rows, '3rd', 'plural', 'masculine'), formStripped),
+                _tableCell(_findConj(rows, '2nd', 'plural', 'feminine'), word),
+                _tableCell(_findConj(rows, '2nd', 'plural', 'masculine'), word),
+                _tableCell(_findConj(rows, '3rd', 'plural', 'feminine'), word),
+                _tableCell(_findConj(rows, '3rd', 'plural', 'masculine'), word),
                 _sideHeader('جمع\nPlural'),
               ]),
             ],
@@ -354,7 +392,7 @@ class WordDetailScreen extends StatelessWidget {
                   child: _tableCellWithLabel(
                     'نحن (We)',
                     _findConj(rows, '1st', 'plural', 'common'),
-                    formStripped,
+                    word,
                   ),
                 ),
                 Container(width: 1, height: 50, color: Colors.grey[100]),
@@ -362,7 +400,7 @@ class WordDetailScreen extends StatelessWidget {
                   child: _tableCellWithLabel(
                     'أنا (I)',
                     _findConj(rows, '1st', 'singular', 'common'),
-                    formStripped,
+                    word,
                   ),
                 ),
               ],
@@ -373,7 +411,7 @@ class WordDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildImperativeBlock(List<ConjugationRow> rows, String formStripped) {
+  Widget _buildImperativeBlock(List<ConjugationRow> rows, Word word) {
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey[200]!),
@@ -406,7 +444,7 @@ class WordDetailScreen extends StatelessWidget {
                 child: _tableCellWithLabel(
                   'Singular (f)',
                   _findConj(rows, '2nd', 'singular', 'feminine'),
-                  formStripped,
+                  word,
                 ),
               ),
               Container(width: 1, height: 50, color: Colors.grey[100]),
@@ -414,7 +452,7 @@ class WordDetailScreen extends StatelessWidget {
                 child: _tableCellWithLabel(
                   'Singular (m)',
                   _findConj(rows, '2nd', 'singular', 'masculine'),
-                  formStripped,
+                  word,
                 ),
               ),
             ],
@@ -427,7 +465,7 @@ class WordDetailScreen extends StatelessWidget {
             child: _tableCellWithLabel(
               'Dual',
               _findConj(rows, '2nd', 'dual', 'common'),
-              formStripped,
+              word,
             ),
           ),
           Divider(height: 1, color: Colors.grey[100]),
@@ -439,7 +477,7 @@ class WordDetailScreen extends StatelessWidget {
                 child: _tableCellWithLabel(
                   'Plural (f)',
                   _findConj(rows, '2nd', 'plural', 'feminine'),
-                  formStripped,
+                  word,
                 ),
               ),
               Container(width: 1, height: 50, color: Colors.grey[100]),
@@ -447,7 +485,7 @@ class WordDetailScreen extends StatelessWidget {
                 child: _tableCellWithLabel(
                   'Plural (m)',
                   _findConj(rows, '2nd', 'plural', 'masculine'),
-                  formStripped,
+                  word,
                 ),
               ),
             ],
@@ -492,7 +530,7 @@ class WordDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _tableCell(String arabicText, String formStripped) {
+  Widget _tableCell(String arabicText, Word word) {
     final baseStyle = GoogleFonts.notoNaskhArabic(
       fontSize: 16,
       fontWeight: FontWeight.bold,
@@ -505,8 +543,10 @@ class WordDetailScreen extends StatelessWidget {
               textAlign: TextAlign.center,
               text: TextSpan(
                 style: baseStyle,
-                children: TextHighlighter.highlightArabicBaseForm(
-                  arabicText, formStripped,
+                children: TextHighlighter.highlightRootWithMutations(
+                  arabicText,
+                  word.root,
+                  mutationLetters: _mutationLetters(word),
                   baseColor: Colors.black87,
                 ),
               ),
@@ -514,7 +554,7 @@ class WordDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _tableCellWithLabel(String label, String arabicText, String formStripped) {
+  Widget _tableCellWithLabel(String label, String arabicText, Word word) {
     final baseStyle = GoogleFonts.notoNaskhArabic(
       fontSize: 16,
       fontWeight: FontWeight.bold,
@@ -534,8 +574,10 @@ class WordDetailScreen extends StatelessWidget {
                   textAlign: TextAlign.center,
                   text: TextSpan(
                     style: baseStyle,
-                    children: TextHighlighter.highlightArabicBaseForm(
-                      arabicText, formStripped,
+                    children: TextHighlighter.highlightRootWithMutations(
+                      arabicText,
+                      word.root,
+                      mutationLetters: _mutationLetters(word),
                       baseColor: Colors.black87,
                     ),
                   ),

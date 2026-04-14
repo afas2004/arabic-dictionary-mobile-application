@@ -40,18 +40,12 @@ class SearchCubit extends Cubit<SearchState> {
         super(SearchEmpty());
 
   Future<void> loadInitial() async {
-    emit(SearchLoading());
-    try {
-      final words = await _searchManager.getCommonWords();
-      emit(SearchLoaded(words, ''));
-    } catch (_) {
-      emit(SearchEmpty());
-    }
+    emit(SearchEmpty());
   }
 
   Future<void> search(String query) async {
     if (query.trim().isEmpty) {
-      loadInitial();
+      emit(SearchEmpty());
       return;
     }
 

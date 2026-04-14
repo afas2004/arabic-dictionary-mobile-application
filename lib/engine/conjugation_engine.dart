@@ -370,9 +370,8 @@ List<ConjugationRow> _generateConjugations(
     ));
   }
 
-  // Imperative
-  final impVowel  = pattern.haraka == Haraka.damma ? _damma : _kasra;
-  final impPrefix = '$_alef$impVowel';
+  // Imperative — hamzat al-wasl (ا) carries no harakah in written Arabic
+  final impPrefix = _alef;
   for (final imp in _imperativeForms) {
     rows.add(ConjugationRow(
       baseWordId: verbId, formArabic: '$impPrefix$presentStem${imp.suffix}',
@@ -434,7 +433,7 @@ List<ConjugationRow> _generateDerivedConjugations(
       pastBase     = '$_alef${_kasra}$r1${_sukun}$_ta${_fatha}$r2${_fatha}$r3${_fatha}';
       presentStem  = '$r1${_sukun}$_ta${_fatha}$r2${_kasra}$r3';
       presAffixes  = _presentAffixes;
-      impPrefix    = '$_alef${_kasra}';
+      impPrefix    = _alef; // hamzat al-wasl — no harakah
       break;
 
     case _ArabicForm.formX:
@@ -442,7 +441,7 @@ List<ConjugationRow> _generateDerivedConjugations(
       pastBase     = '$_alef${_kasra}$_sin${_sukun}$_ta${_fatha}$r1${_sukun}$r2${_fatha}$r3${_fatha}';
       presentStem  = '$_sin${_sukun}$_ta${_fatha}$r1${_sukun}$r2${_kasra}$r3';
       presAffixes  = _presentAffixes;
-      impPrefix    = '$_alef${_kasra}';
+      impPrefix    = _alef; // hamzat al-wasl — no harakah
       break;
 
     default:
@@ -492,7 +491,7 @@ List<ConjugationRow> _generateDefectiveConjugations(
       presBaseKasra  = '$r1${_sukun}$r2${_kasra}';
       presBaseFatha  = '$r1${_sukun}$r2${_fatha}';
       presAffixesBase= _presentAffixes;
-      impPrefix      = '$_alef${_kasra}';
+      impPrefix      = _alef; // hamzat al-wasl — no harakah
       isFathaContext = false;
       break;
 
@@ -528,7 +527,7 @@ List<ConjugationRow> _generateDefectiveConjugations(
       presBaseKasra  = '$r1${_sukun}$_ta${_fatha}$r2${_kasra}';
       presBaseFatha  = presBaseKasra;
       presAffixesBase= _presentAffixes;
-      impPrefix      = '$_alef${_kasra}';
+      impPrefix      = _alef; // hamzat al-wasl — no harakah
       isFathaContext = false;
       break;
 
@@ -537,7 +536,7 @@ List<ConjugationRow> _generateDefectiveConjugations(
       presBaseKasra  = '$_sin${_sukun}$_ta${_fatha}$r1${_sukun}$r2${_kasra}';
       presBaseFatha  = presBaseKasra;
       presAffixesBase= _presentAffixes;
-      impPrefix      = '$_alef${_kasra}';
+      impPrefix      = _alef; // hamzat al-wasl — no harakah
       isFathaContext = false;
       break;
 
@@ -727,31 +726,32 @@ List<ConjugationRow> _generateHollowConjugations(
       break;
 
     case _ArabicForm.formVIII:
-      // Past long:  اِ + R1 + sukun + تَ + ا + R3 + fatha
-      // Past short: اِ + R1 + sukun + تَ + R3
+      // Past long:  اِ + R1 + sukun + تَ + ا + R3 + fatha   e.g. اِحْتَاجَ
+      // Past short: اِ + R1 + sukun + تَ + R3               e.g. اِحْتَجْتَ
       pastLong  = '$_alef${_kasra}$r1${_sukun}$_ta${_fatha}$_alef$r3${_fatha}';
       pastShort = '$_alef${_kasra}$r1${_sukun}$_ta${_fatha}$r3';
-      // Present long:  R1 + sukun + تَ + ا + R3
-      // Present short: R1 + sukun + تَ + R3
+      // Present long:  R1 + sukun + تَ + ا + R3   e.g. يَحْتَاجُ
+      // Present short: R1 + sukun + تَ + R3        e.g. يَحْتَجْنَ
       presLong  = '$r1${_sukun}$_ta${_fatha}$presLongVowel$r3';
       presShort = '$r1${_sukun}$_ta${_fatha}$r3';
-      presAffixes = _presentAffixes;
-      impPrefix   = '$_alef${_kasra}';
+      presAffixes   = _presentAffixes;
+      impPrefix     = _alef; // hamzat al-wasl — no harakah
       presVowelOnR1 = _fatha;
       break;
 
     case _ArabicForm.formX:
-      // Past long:  اِسْتَ + R1 + fatha + ا + R3 + fatha
-      // Past short: اِسْتَ + R1 + fatha + R3
+      // Past long:  اِسْتَ + R1 + fatha + ا + R3 + fatha   e.g. اِسْتَعَانَ
+      // Past short: اِسْتَ + R1 + fatha + R3                e.g. اِسْتَعَنْتَ
       pastLong  = '$_alef${_kasra}$_sin${_sukun}$_ta${_fatha}$r1${_fatha}$_alef$r3${_fatha}';
       pastShort = '$_alef${_kasra}$_sin${_sukun}$_ta${_fatha}$r1${_fatha}$r3';
-      // Present long:  سْتَ + R1 + fatha + ا + R3
-      // Present short: سْتَ + R1 + fatha + R3
-      presLong  = '$_sin${_sukun}$_ta${_fatha}$r1${_fatha}$presLongVowel$r3';
-      presShort = '$_sin${_sukun}$_ta${_fatha}$r1${_fatha}$r3';
-      presAffixes = _presentAffixes;
-      impPrefix   = '$_alef${_kasra}';
-      presVowelOnR1 = _fatha;
+      // Present long:  سْتَ + R1 + kasra + ي + R3   e.g. يَسْتَعِينُ
+      // Present short: سْتَ + R1 + kasra + R3        e.g. يَسْتَعِنَّ
+      // Note: Form X hollow uses kasra on R1 + ي (unlike Form VIII which uses ا)
+      presLong  = '$_sin${_sukun}$_ta${_fatha}$r1${_kasra}$_ya$r3';
+      presShort = '$_sin${_sukun}$_ta${_fatha}$r1${_kasra}$r3';
+      presAffixes   = _presentAffixes;
+      impPrefix     = _alef; // hamzat al-wasl — no harakah (اسْتَعِنْ)
+      presVowelOnR1 = _kasra;
       break;
 
     default:
@@ -767,7 +767,7 @@ List<ConjugationRow> _generateHollowConjugations(
       presLong  = '$r1$presR1Vowel$presLongVowel$r3';
       presShort = '$r1$presR1Vowel$r3';
       presAffixes   = _presentAffixes;
-      impPrefix     = '$_alef${(r2w == _waw ? _damma : _kasra)}';
+      impPrefix     = _alef; // hamzat al-wasl — no harakah
       presVowelOnR1 = presR1Vowel;
   }
 
@@ -901,7 +901,7 @@ List<ConjugationRow> _buildRowsFromStems({
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Increment this whenever conjugation logic changes to bust the SQLite cache.
-const int _engineVersion = 2;
+const int _engineVersion = 3;
 
 // Track whether we've checked the version in this DB session already.
 bool _versionChecked = false;

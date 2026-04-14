@@ -155,11 +155,11 @@ class _SearchScreenState extends State<SearchScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Left: root or weak tag ──────────────────────────────────
-            if (showRoot)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
+            // ── Left: root / weak tag + COMMON badge ───────────────────
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (showRoot) ...[
                   if (!isWeak)
                     Text(
                       'from',
@@ -194,9 +194,27 @@ class _SearchScreenState extends State<SearchScreen> {
                       ),
                     ),
                 ],
-              )
-            else
-              SizedBox(width: 40),
+                if (word.isCommon)
+                  Container(
+                    margin: EdgeInsets.only(top: 4),
+                    padding:
+                        EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: Text(
+                      'COMMON',
+                      style: GoogleFonts.manrope(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2E7D32),
+                      ),
+                    ),
+                  ),
+                if (!showRoot && !word.isCommon) SizedBox(width: 40),
+              ],
+            ),
 
             // ── Right: word details (RTL) ───────────────────────────────
             Expanded(
@@ -219,12 +237,15 @@ class _SearchScreenState extends State<SearchScreen> {
                         text: TextSpan(
                           style: GoogleFonts.notoNaskhArabic(
                               fontSize: 20, fontWeight: FontWeight.bold),
-                          // Arabic: always highlight root consonants (works for
-                          // both direct matches and stemmer fallback results).
+                          // Arabic: highlight only the characters that were
+                          // actually searched (not the full consonant set).
                           // English: no Arabic highlight needed.
                           children: isArabicSearch
-                              ? TextHighlighter.highlightArabicBaseForm(
-                                  word.formArabic, word.formStripped,
+                              ? TextHighlighter.highlightArabicQuery(
+                                  word.formArabic,
+                                  query
+                                      .replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '')
+                                      .replaceAll(RegExp(r'[\u0623\u0625\u0622\u0671]'), '\u0627'),
                                   baseColor: Colors.black87)
                               : [
                                   TextSpan(
@@ -238,28 +259,10 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                   SizedBox(height: 4),
 
-                  // Badges + word type
+                  // Word type + verb form label (no COMMON here — moved to left)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      if (word.isCommon)
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 2),
-                          margin: EdgeInsets.only(right: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.green[50],
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: Text(
-                            'COMMON',
-                            style: GoogleFonts.manrope(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF2E7D32),
-                            ),
-                          ),
-                        ),
                       Text(
                         readableType,
                         style: GoogleFonts.manrope(
@@ -268,6 +271,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       if (Formatters.detectVerbFormLabel(word.formStripped) != null)
                         Text(
                           ' • ${Formatters.detectVerbFormLabel(word.formStripped)!}',
+                          textDirection: TextDirection.ltr,
                           style: GoogleFonts.manrope(
                               fontSize: 11, color: Colors.grey[500]),
                         ),

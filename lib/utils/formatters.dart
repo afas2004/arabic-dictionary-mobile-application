@@ -15,8 +15,8 @@ class Formatters {
     switch (wordType) {
       case 'base_verb':           return 'Verb';
       case 'verbal_noun':         return 'Verbal Noun';
-      case 'active_participle':   return 'Active Participle';
-      case 'passive_participle':  return 'Passive Participle';
+      case 'active_participle':   return 'فَاعِل';   // doer / agent
+      case 'passive_participle':  return 'مَفْعُول'; // acted upon
       case 'intensive_form':      return 'Intensive Form';
       case 'singular_noun':       return 'Noun';
       case 'adjective':           return 'Adjective';
@@ -51,27 +51,30 @@ class Formatters {
 
   /// Detects verb form from the surface form (formStripped) rather than
   /// relying on the DB verb_form column, which may contain Buckwalter codes.
-  /// Returns a display label like "Form IV" or null for Form I / non-verbs.
+  /// Returns an Arabic pattern label like "Form: أَفْعَلَ" or null for
+  /// Form I / non-verbs.
   static String? detectVerbFormLabel(String formStripped) {
     // Strip diacritics to work on pure consonants
     final s = formStripped.replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '');
     if (s.length <= 3) return null; // Form I — no label needed
 
     if (s.length == 4) {
-      if (s[0] == '\u0623') return 'Form IV';  // أ___ (alef+hamza prefix)
-      if (s[1] == '\u0627') return 'Form III'; // _ا__ (alef at pos 1)
-      if (s[0] == '\u062A') return 'Form V';   // ت___ (ta prefix)
+      if (s[0] == '\u0623' || s[0] == '\u0625') return 'Form: \u0623\u064E\u0641\u0652\u0639\u064E\u0644\u064E';  // أَفْعَلَ  (Form IV)
+      if (s[1] == '\u0627')                      return 'Form: \u0641\u064E\u0627\u0639\u064E\u0644\u064E';        // فَاعَلَ   (Form III)
+      if (s[0] == '\u062A')                      return 'Form: \u062A\u064E\u0641\u064E\u0639\u0651\u064E\u0644\u064E'; // تَفَعَّلَ (Form V)
       return null;
     }
     if (s.length == 5) {
       // ا_ت__ — alef at pos 0 + ta at pos 2 → Form VIII
-      if (s[0] == '\u0627' && s[2] == '\u062A') return 'Form VIII';
+      if (s[0] == '\u0627' && s[2] == '\u062A') {
+        return 'Form: \u0627\u0641\u0652\u062A\u064E\u0639\u064E\u0644\u064E'; // افْتَعَلَ
+      }
       return null;
     }
     if (s.length == 6) {
       // است___ — alef+sin+ta prefix → Form X
       if (s[0] == '\u0627' && s[1] == '\u0633' && s[2] == '\u062A') {
-        return 'Form X';
+        return 'Form: \u0627\u0633\u0652\u062A\u064E\u0641\u0652\u0639\u064E\u0644\u064E'; // اسْتَفْعَلَ
       }
       return null;
     }
@@ -114,6 +117,9 @@ class Formatters {
   /// to avoid confusing learners with the mutated surface form.
   static bool isWeakRoot(Word word) {
     if (!shouldDisplayRoot(word)) return false;
+
+    // Passive participles follow a fixed مَفْعُول pattern and conjugate normally
+    if (word.wordType == 'passive_participle') return false;
 
     // Extract only the letter characters from the dash-separated root
     final letters = word.root.replaceAll('-', '');

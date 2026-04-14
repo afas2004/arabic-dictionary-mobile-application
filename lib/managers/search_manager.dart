@@ -41,7 +41,11 @@ class SearchManager {
   // ── Arabic search ─────────────────────────────────────────────────────────────
 
   Future<List<Word>> _searchArabic(String query) async {
-    final stripped = query.replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '');
+    // Strip diacritics then normalise alef variants (أ إ آ ٱ → ا) so that
+    // searching "أكل" and "اكل" both hit the same entries.
+    final stripped = query
+        .replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '')
+        .replaceAll(RegExp(r'[\u0623\u0625\u0622\u0671]'), '\u0627');
 
     // Tier 1: direct lookup on the full query
     final directResults = await _repository.directArabicLookup(stripped);
