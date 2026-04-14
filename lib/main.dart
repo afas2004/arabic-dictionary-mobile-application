@@ -1,37 +1,53 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+
 import 'repositories/dictionary_repository.dart';
+import 'engine/arabic_stemmer.dart';
+import 'managers/search_manager.dart';
 import 'cubits/search_cubit.dart';
 import 'screens/search_screen.dart';
-import 'engine/conjugation_engine.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  final dictionaryRepo = DictionaryRepository();
-  // Optional: await dictionaryRepo.database; // Pre-warm DB
-  runApp(MyApp(repository: dictionaryRepo));
+
+  final repository = DictionaryRepository();
+  final stemmer    = ArabicStemmer();
+  final search     = SearchManager(repository: repository, stemmer: stemmer);
+
+  runApp(MyApp(repository: repository, searchManager: search));
 }
 
 class MyApp extends StatelessWidget {
   final DictionaryRepository repository;
-  
-  const MyApp({Key? key, required this.repository}) : super(key: key);
+  final SearchManager searchManager;
+
+  const MyApp({
+    Key? key,
+    required this.repository,
+    required this.searchManager,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return MultiBlocProvider(
+    return MultiRepositoryProvider(
       providers: [
         RepositoryProvider.value(value: repository),
-        BlocProvider(create: (_) => SearchCubit(repository: repository)),
+        RepositoryProvider.value(value: searchManager),
       ],
-      child: MaterialApp(
-        title: 'Arabic Dictionary',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          primaryColor: Color(0xFF1976D2),
+      child: MultiBlocProvider(
+        providers: [
+          BlocProvider(
+            create: (_) => SearchCubit(searchManager: searchManager),
+          ),
+        ],
+        child: MaterialApp(
+          title: 'Arabic Dictionary',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            primaryColor: const Color(0xFF1976D2),
+          ),
+          home: SearchScreen(),
         ),
-        home: SearchScreen(),
       ),
     );
   }

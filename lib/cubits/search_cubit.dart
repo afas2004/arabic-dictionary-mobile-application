@@ -1,7 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:arabic_dictionary/models/models.dart';
-import 'package:arabic_dictionary/repositories/dictionary_repository.dart';
+import 'package:arabic_dictionary/managers/search_manager.dart';
 
 // --- STATE ---
 abstract class SearchState extends Equatable {
@@ -9,16 +9,16 @@ abstract class SearchState extends Equatable {
   List<Object?> get props => [];
 }
 
-class SearchEmpty extends SearchState {} // Replaced Initial with Empty
+class SearchEmpty extends SearchState {}
 
 class SearchLoading extends SearchState {}
 
 class SearchLoaded extends SearchState {
   final List<Word> words;
-  final String query; 
-  
+  final String query;
+
   SearchLoaded(this.words, this.query);
-  
+
   @override
   List<Object?> get props => [words, query];
 }
@@ -26,21 +26,23 @@ class SearchLoaded extends SearchState {
 class SearchError extends SearchState {
   final String message;
   SearchError(this.message);
-  
+
   @override
   List<Object?> get props => [message];
 }
 
 // --- CUBIT ---
 class SearchCubit extends Cubit<SearchState> {
-  final DictionaryRepository repository;
+  final SearchManager _searchManager;
 
-  SearchCubit({required this.repository}) : super(SearchEmpty());
+  SearchCubit({required SearchManager searchManager})
+      : _searchManager = searchManager,
+        super(SearchEmpty());
 
   Future<void> loadInitial() async {
     emit(SearchLoading());
     try {
-      final words = await repository.getCommonWords();
+      final words = await _searchManager.getCommonWords();
       emit(SearchLoaded(words, ''));
     } catch (_) {
       emit(SearchEmpty());
@@ -52,11 +54,11 @@ class SearchCubit extends Cubit<SearchState> {
       loadInitial();
       return;
     }
-    
+
     emit(SearchLoading());
     try {
-      final results = await repository.searchWords(query);
-      emit(SearchLoaded(results, query)); 
+      final results = await _searchManager.search(query);
+      emit(SearchLoaded(results, query));
     } catch (e) {
       emit(SearchError(e.toString()));
     }

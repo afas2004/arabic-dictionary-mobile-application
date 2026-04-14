@@ -1,4 +1,8 @@
 // lib/repositories/dictionary_repository.dart
+//
+// Pure data-access layer. No search orchestration, no stemmer logic.
+// Every public method maps 1-to-1 with one SQL query or one DB operation.
+// Search orchestration lives in SearchManager (business layer).
 
 import 'dart:io';
 import 'package:flutter/services.dart';
@@ -6,11 +10,10 @@ import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/models.dart';
-import '../engine/arabic_stemmer.dart';
+import '../engine/conjugation_engine.dart';
 
 class DictionaryRepository {
   static Database? _db;
-  final ArabicStemmer _stemmer = ArabicStemmer();
 
   Future<Database> get database async {
     if (_db != null) return _db!;
@@ -40,11 +43,11 @@ class DictionaryRepository {
     return db;
   }
 
-  // ── Common words ───────────────────────────────────────────────────────────
+  // ── Common words ─────────────────────────────────────────────────────────────
 
   Future<List<Word>> getCommonWords() async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.rawQuery('''
+    final maps = await db.rawQuery('''
       SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic
       FROM lexicon l
       LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
@@ -53,83 +56,16 @@ class DictionaryRepository {
       ORDER BY l.frequency DESC
       LIMIT 100
     ''');
-    return maps.map((map) => Word.fromMap(map)).toList();
+    return maps.map((m) => Word.fromMap(m)).toList();
   }
 
-  // ── Main search entry point ────────────────────────────────────────────────
+  // ── Arabic lookup queries ─────────────────────────────────────────────────────
+  //
+  // directArabicLookup — form_stripped prefix/substring + root prefix match.
+  // Uses MIN(id) subquery to guarantee deterministic row selection when
+  // multiple DB entries share the same (form_stripped, word_type) pair.
 
-  Future<List<Word>> searchWords(String query) async {
-    final trimmed = query.trim();
-    if (trimmed.isEmpty) return [];
-
-    final isArabic = RegExp(r'[\u0600-\u06FF]').hasMatch(trimmed);
-    return isArabic
-        ? await _searchArabic(trimmed)
-        : await _searchEnglish(trimmed);
-  }
-
-  // ── Arabic search ──────────────────────────────────────────────────────────
-
-  Future<List<Word>> _searchArabic(String query) async {
-    final stripped = query.replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '');
-
-    // Tier 1: Direct lookup on full query (exact / prefix / substring)
-    final directResults = await _directArabicLookup(stripped);
-
-    // Single word — direct + stemmer fallback, done
-    final tokens = stripped.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
-    if (tokens.length == 1) {
-      if (directResults.isNotEmpty) return directResults;
-      return await _stemmerFallback(stripped);
-    }
-
-    // Multi-word:
-    // Tier 1 results (full phrase) go first
-    final seen = <int, Word>{};
-    for (final w in directResults) seen[w.id] = w;
-
-    // Tier 2: per-token direct lookup
-    final tier2 = <int, _ScoredWord>{};
-    for (final token in tokens) {
-      final results = await _directArabicLookup(token);
-      for (final word in results) {
-        if (seen.containsKey(word.id)) continue; // already in tier 1
-        if (tier2.containsKey(word.id)) {
-          tier2[word.id]!.matchCount++;
-        } else {
-          tier2[word.id] = _ScoredWord(word: word, matchCount: 1);
-        }
-      }
-    }
-
-    // Tier 3: per-token stemmer fallback
-    final tier3 = <int, _ScoredWord>{};
-    for (final token in tokens) {
-      final results = await _stemmerFallback(token);
-      for (final word in results) {
-        if (seen.containsKey(word.id)) continue;
-        if (tier2.containsKey(word.id)) continue;
-        if (tier3.containsKey(word.id)) {
-          tier3[word.id]!.matchCount++;
-        } else {
-          tier3[word.id] = _ScoredWord(word: word, matchCount: 1);
-        }
-      }
-    }
-
-    final tier2Sorted = _sortScoredWords(tier2);
-    final tier3Sorted = _sortScoredWords(tier3);
-
-    return [
-      ...directResults,
-      ...tier2Sorted,
-      ...tier3Sorted,
-    ].take(50).toList();
-  }
-
-  /// Direct lookup on form_stripped and root.
-  /// Groups by form_stripped + word_type to eliminate duplicate DB entries.
-  Future<List<Word>> _directArabicLookup(String stripped) async {
+  Future<List<Word>> directArabicLookup(String stripped) async {
     final db = await database;
     final maps = await db.rawQuery('''
       SELECT l2.*, m.meaning_text, parent.form_arabic AS base_form_arabic,
@@ -156,138 +92,62 @@ class DictionaryRepository {
     return maps.map((m) => Word.fromMap(m)).toList();
   }
 
-  /// Stemmer fallback: root column → compound root LIKE → form_stripped LIKE.
-  Future<List<Word>> _stemmerFallback(String query) async {
-    final stemResult = _stemmer.stem(query);
-    if (!stemResult.success) return [];
-
+  /// Exact root match — used as first stemmer fallback tier.
+  Future<List<Word>> exactRootLookup(String rootForDB) async {
     final db = await database;
-
-    if (stemResult.rootForDB != null) {
-      final exactRoot = await db.rawQuery('''
-        SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic
-        FROM lexicon l
-        LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
-        LEFT JOIN lexicon parent ON l.base_form_id = parent.id
-        WHERE l.root = ?
-        ORDER BY l.is_common DESC, l.frequency DESC
-        LIMIT 50
-      ''', [stemResult.rootForDB]);
-
-      if (exactRoot.isNotEmpty) {
-        return exactRoot.map((m) => Word.fromMap(m)).toList();
-      }
-
-      // Handles compound roots like 'وهب-;-هيب'
-      final likeRoot = await db.rawQuery('''
-        SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic
-        FROM lexicon l
-        LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
-        LEFT JOIN lexicon parent ON l.base_form_id = parent.id
-        WHERE l.root LIKE '%' || ? || '%'
-        ORDER BY l.is_common DESC, l.frequency DESC
-        LIMIT 50
-      ''', [stemResult.rootForDB]);
-
-      if (likeRoot.isNotEmpty) {
-        return likeRoot.map((m) => Word.fromMap(m)).toList();
-      }
-    }
-
-    if (stemResult.extractedRoot != null) {
-      final likeForm = await db.rawQuery('''
-        SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic
-        FROM lexicon l
-        LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
-        LEFT JOIN lexicon parent ON l.base_form_id = parent.id
-        WHERE l.form_stripped LIKE '%' || ? || '%'
-        ORDER BY l.is_common DESC, l.frequency DESC
-        LIMIT 50
-      ''', [stemResult.extractedRoot]);
-
-      return likeForm.map((m) => Word.fromMap(m)).toList();
-    }
-
-    return [];
+    final maps = await db.rawQuery('''
+      SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic
+      FROM lexicon l
+      LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
+      LEFT JOIN lexicon parent ON l.base_form_id = parent.id
+      WHERE l.root = ?
+      ORDER BY l.is_common DESC, l.frequency DESC
+      LIMIT 50
+    ''', [rootForDB]);
+    return maps.map((m) => Word.fromMap(m)).toList();
   }
 
-  // ── English search ─────────────────────────────────────────────────────────
-
-  /// 3-tier English search:
-  ///   Tier 1 — full phrase match in meaning_text
-  ///   Tier 2 — per-token exact/boundary matches (deduped against tier 1)
-  ///   Tier 3 — per-token substring/related matches (deduped against tiers 1+2)
-  Future<List<Word>> _searchEnglish(String query) async {
-    String lowerQuery = query.toLowerCase().trim();
-    // Strip "to " prefix — common when users type English verb infinitives
-    if (lowerQuery.startsWith('to ') && lowerQuery.length > 3) {
-      lowerQuery = lowerQuery.substring(3).trim();
-    }
-
-    // Tokenize — skip single-char noise words ("a", "I")
-    final tokens = lowerQuery
-        .split(RegExp(r'\s+'))
-        .where((t) => t.length > 1)
-        .toList();
-
-    if (tokens.isEmpty) return [];
-
-    // Tier 1: full phrase search
-    final tier1 = await _searchEnglishPhrase(lowerQuery);
-    final seen = <int>{};
-    for (final w in tier1) seen.add(w.id);
-
-    // Single word — tier 1 is sufficient (phrase == token)
-    if (tokens.length == 1) return tier1;
-
-    // Tier 2: per-token high-score matches (score ≥ 3 = word boundary hit)
-    final tier2 = <int, _ScoredWord>{};
-    for (final token in tokens) {
-      final results = await _searchEnglishSingleToken(token, minScore: 3);
-      for (final word in results) {
-        if (seen.contains(word.id)) continue;
-        if (tier2.containsKey(word.id)) {
-          tier2[word.id]!.matchCount++;
-        } else {
-          tier2[word.id] = _ScoredWord(word: word, matchCount: 1);
-        }
-      }
-    }
-    final tier2Ids = tier2.keys.toSet();
-
-    // Tier 3: per-token substring/related matches (score < 3)
-    final tier3 = <int, _ScoredWord>{};
-    for (final token in tokens) {
-      final results = await _searchEnglishSingleToken(token, minScore: 1);
-      for (final word in results) {
-        if (seen.contains(word.id)) continue;
-        if (tier2Ids.contains(word.id)) continue;
-        if (tier3.containsKey(word.id)) {
-          tier3[word.id]!.matchCount++;
-        } else {
-          tier3[word.id] = _ScoredWord(word: word, matchCount: 1);
-        }
-      }
-    }
-
-    return [
-      ...tier1,
-      ..._sortScoredWords(tier2),
-      ..._sortScoredWords(tier3),
-    ].take(50).toList();
+  /// LIKE root match — handles compound roots like 'وهب-;-هيب'.
+  Future<List<Word>> likeRootLookup(String rootForDB) async {
+    final db = await database;
+    final maps = await db.rawQuery('''
+      SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic
+      FROM lexicon l
+      LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
+      LEFT JOIN lexicon parent ON l.base_form_id = parent.id
+      WHERE l.root LIKE '%' || ? || '%'
+      ORDER BY l.is_common DESC, l.frequency DESC
+      LIMIT 50
+    ''', [rootForDB]);
+    return maps.map((m) => Word.fromMap(m)).toList();
   }
 
-  /// Full phrase search — treats the entire query as one string.
-  ///
-  /// Scoring (high → low):
-  ///   5 — meaning_text is exactly the phrase
-  ///   4 — phrase starts meaning ("eat something...") OR ends meaning ("to eat")
-  ///   3 — phrase appears at word boundary inside meaning, or before comma/semicolon
-  ///   2 — substring match anywhere
-  ///
-  /// Deduplication: groups by form_stripped + word_type to remove duplicate
-  /// DB entries that share the same surface form and meaning.
-  Future<List<Word>> _searchEnglishPhrase(String phrase) async {
+  /// form_stripped LIKE match — last-resort stemmer fallback.
+  Future<List<Word>> likeFormLookup(String extractedRoot) async {
+    final db = await database;
+    final maps = await db.rawQuery('''
+      SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic
+      FROM lexicon l
+      LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
+      LEFT JOIN lexicon parent ON l.base_form_id = parent.id
+      WHERE l.form_stripped LIKE '%' || ? || '%'
+      ORDER BY l.is_common DESC, l.frequency DESC
+      LIMIT 50
+    ''', [extractedRoot]);
+    return maps.map((m) => Word.fromMap(m)).toList();
+  }
+
+  // ── English lookup queries ────────────────────────────────────────────────────
+  //
+  // Scoring (high → low):
+  //   5 — meaning_text exactly equals query
+  //   4 — query starts or ends meaning
+  //   3 — query appears at word boundary or before comma/semicolon
+  //   2 — substring match anywhere
+  //
+  // Deduplication: MIN(id) subquery per (form_stripped, word_type) group.
+
+  Future<List<Word>> englishPhraseLookup(String phrase) async {
     final db = await database;
     final maps = await db.rawQuery('''
       SELECT l2.*, m.meaning_text, parent.form_arabic AS base_form_arabic,
@@ -317,12 +177,8 @@ class DictionaryRepository {
     return maps.map((m) => Word.fromMap(m)).toList();
   }
 
-  /// Single token search. [minScore] filters results to only include
-  /// rows at or above that relevance score, allowing tier separation.
-  /// Uses a subquery so we can filter on the computed relevance_score
-  /// with WHERE (SQLite does not allow HAVING without GROUP BY).
-  /// Same scoring and deduplication as phrase search.
-  Future<List<Word>> _searchEnglishSingleToken(
+  /// Single token search. [minScore] gates tier separation in SearchManager.
+  Future<List<Word>> englishTokenLookup(
     String token, {
     int minScore = 1,
   }) async {
@@ -372,7 +228,7 @@ class DictionaryRepository {
     return maps.map((m) => Word.fromMap(m)).toList();
   }
 
-  // ── Detail queries ─────────────────────────────────────────────────────────
+  // ── Detail queries ────────────────────────────────────────────────────────────
 
   Future<List<Meaning>> getMeanings(int wordId) async {
     final db = await database;
@@ -399,23 +255,18 @@ class DictionaryRepository {
     return maps.map((m) => Word.fromMap(m)).toList();
   }
 
-  // ── Internal helpers ───────────────────────────────────────────────────────
+  // ── Conjugation ───────────────────────────────────────────────────────────────
+  //
+  // Keeps ConjugationEngine creation here so cubits never touch the raw db handle.
 
-  List<Word> _sortScoredWords(Map<int, _ScoredWord> scored) {
-    final list = scored.values.toList()
-      ..sort((a, b) {
-        if (b.matchCount != a.matchCount) {
-          return b.matchCount.compareTo(a.matchCount);
-        }
-        if (a.word.isCommon != b.word.isCommon) return a.word.isCommon ? -1 : 1;
-        return b.word.frequency.compareTo(a.word.frequency);
-      });
-    return list.map((s) => s.word).toList();
+  Future<ConjugationTable?> getConjugationTable(Word word) async {
+    if (word.wordType != 'base_verb') return null;
+    final db = await database;
+    final engine = ConjugationEngine(db);
+    return engine.getConjugations(
+      lexiconId: word.id,
+      formStripped: word.formStripped,
+      root: word.root,
+    );
   }
-}
-
-class _ScoredWord {
-  final Word word;
-  int matchCount;
-  _ScoredWord({required this.word, required this.matchCount});
 }
