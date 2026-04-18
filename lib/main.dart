@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'repositories/dictionary_repository.dart';
 import 'engine/arabic_stemmer.dart';
+import 'managers/cache_manager.dart';
 import 'managers/search_manager.dart';
 import 'cubits/search_cubit.dart';
 import 'screens/search_screen.dart';
@@ -12,7 +13,12 @@ void main() async {
 
   final repository = DictionaryRepository();
   final stemmer    = ArabicStemmer();
-  final search     = SearchManager(repository: repository, stemmer: stemmer);
+  final cache      = CacheManager();
+  final search     = SearchManager(
+    repository: repository,
+    stemmer:    stemmer,
+    cache:      cache,
+  );
 
   runApp(MyApp(repository: repository, searchManager: search));
 }

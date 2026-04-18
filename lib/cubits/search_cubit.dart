@@ -39,8 +39,20 @@ class SearchCubit extends Cubit<SearchState> {
       : _searchManager = searchManager,
         super(SearchEmpty());
 
+  /// Called on app start and when the search field is cleared.
+  ///
+  /// On the first call: pre-warms the RAM cache with common words and
+  /// displays them immediately — no DB round-trip needed after the first open.
+  /// On subsequent calls (e.g. clear button): preWarm() returns [] instantly
+  /// (idempotent guard), so we fall back to SearchEmpty.
   Future<void> loadInitial() async {
-    emit(SearchEmpty());
+    emit(SearchLoading());
+    try {
+      final words = await _searchManager.preWarm();
+      emit(words.isNotEmpty ? SearchLoaded(words, '') : SearchEmpty());
+    } catch (_) {
+      emit(SearchEmpty());
+    }
   }
 
   Future<void> search(String query) async {

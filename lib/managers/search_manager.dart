@@ -3,139 +3,240 @@
 // Business-layer search orchestrator.
 //
 // Sits between the Cubits (presentation) and DictionaryRepository (data).
-// Owns all search logic: script detection, tokenization, tier ranking,
-// deduplication, and stemmer fallback. The repository is called only for
-// raw DB queries — no SQL lives here.
+// Owns all search logic: script detection, normalisation, tokenisation,
+// cache lookup, tier ranking, deduplication, and stemmer fallback.
+// The repository is called only for raw DB queries — no SQL lives here.
 //
-// Future extension points (see architecture diagram):
-//   - AraBERT semantic search slot (replaces / augments stemmer fallback)
-//   - CacheManager integration (check cache before hitting DB)
-//   - Tashaphyne stemmer swap-in (replace ArabicStemmer with Tashaphyne)
+// ── Search tiers (Arabic) ─────────────────────────────────────────────────────
+//
+//   Tier 0 — RAM cache        (< 1 ms)
+//   Tier 1 — DB direct lookup (~10–40 ms)
+//   Tier 2 — Stemmer + DB     (~60–200 ms)
+//
+// ── Multi-token (sentence input) ─────────────────────────────────────────────
+//
+//   Each token is resolved independently through Tier 0 → 1 → 2.
+//   Results are scored by how many tokens a word matched and merged.
+//   No sentence-level cache key is stored (near-zero hit rate).
+//
+// ── Performance logging ───────────────────────────────────────────────────────
+//
+//   [PERF] lines are emitted via debugPrint for each tier hit.
+//   Use these for report benchmarking:
+//     [PERF] cache hit   : Xµs
+//     [PERF] db direct   : Xµs
+//     [PERF] stemmer     : Xµs
+//     [PERF] total       : Xms
 
+import 'package:flutter/foundation.dart';
 import '../models/models.dart';
 import '../repositories/dictionary_repository.dart';
 import '../engine/arabic_stemmer.dart';
+import 'cache_manager.dart';
 
 class SearchManager {
   final DictionaryRepository _repository;
-  final ArabicStemmer _stemmer;
+  final ArabicStemmer        _stemmer;
+  final CacheManager         _cache;
+
+  bool _preWarmed = false;
 
   SearchManager({
     required DictionaryRepository repository,
     required ArabicStemmer stemmer,
+    required CacheManager cache,
   })  : _repository = repository,
-        _stemmer = stemmer;
+        _stemmer    = stemmer,
+        _cache      = cache;
 
-  // ── Public API ────────────────────────────────────────────────────────────────
+  // ── Pre-warm ──────────────────────────────────────────────────────────────
 
-  Future<List<Word>> getCommonWords() => _repository.getCommonWords();
+  /// Loads all common words from the DB into the RAM cache.
+  ///
+  /// Idempotent — subsequent calls return [] immediately without touching
+  /// the DB again.  Returns the word list so [SearchCubit.loadInitial] can
+  /// display it directly, avoiding a second round-trip.
+  Future<List<Word>> preWarm() async {
+    if (_preWarmed) return [];
+    _preWarmed = true;
+
+    final sw    = Stopwatch()..start();
+    final words = await _repository.getCommonWords();
+    _cache.preWarm(words);
+    debugPrint('[CACHE] pre-warm done in ${sw.elapsedMilliseconds}ms '
+        '— cache size: ${_cache.size}');
+    return words;
+  }
+
+  // ── Public search API ─────────────────────────────────────────────────────
 
   Future<List<Word>> search(String query) async {
     final trimmed = query.trim();
     if (trimmed.isEmpty) return [];
 
-    final isArabic = RegExp(r'[\u0600-\u06FF]').hasMatch(trimmed);
-    return isArabic ? _searchArabic(trimmed) : _searchEnglish(trimmed);
-  }
+    final sw = Stopwatch()..start();
 
-  // ── Arabic search ─────────────────────────────────────────────────────────────
-
-  Future<List<Word>> _searchArabic(String query) async {
-    // Strip diacritics then normalise alef variants (أ إ آ ٱ → ا) so that
-    // searching "أكل" and "اكل" both hit the same entries.
-    final stripped = query
-        .replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '')
-        .replaceAll(RegExp(r'[\u0623\u0625\u0622\u0671]'), '\u0627');
-
-    // Tier 1: direct lookup on the full query
-    final directResults = await _repository.directArabicLookup(stripped);
-
-    // Single word — direct hit or stemmer fallback
-    final tokens =
-        stripped.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
-    if (tokens.length == 1) {
-      if (directResults.isNotEmpty) return directResults;
-      return _stemmerFallback(stripped);
+    // ── Tier 0: RAM cache (whole-query key) ──────────────────────────────────
+    // Catches exact repeat searches and pre-warmed common-word lookups.
+    final cached = _cache.get(trimmed);
+    if (cached != null) {
+      debugPrint('[PERF] cache hit   : ${sw.elapsedMicroseconds}µs  "$trimmed"');
+      return cached;
     }
 
-    // Multi-word: full phrase first, then per-token tiers
-    final seen = <int, Word>{};
-    for (final w in directResults) seen[w.id] = w;
+    final isArabic = RegExp(r'[\u0600-\u06FF]').hasMatch(trimmed);
+    final results  = isArabic
+        ? await _searchArabic(trimmed, sw)
+        : await _searchEnglish(trimmed, sw);
 
-    // Tier 2: per-token direct lookup
+    // Write-through: cache the final merged result under the original query.
+    if (results.isNotEmpty) _cache.put(trimmed, results);
+
+    debugPrint('[PERF] total       : ${sw.elapsedMilliseconds}ms  '
+        '"$trimmed" → ${results.length} results');
+    return results;
+  }
+
+  // ── Arabic search ─────────────────────────────────────────────────────────
+
+  Future<List<Word>> _searchArabic(String query, Stopwatch sw) async {
+    final stripped = CacheManager.normaliseKey(query);
+
+    final tokens = stripped
+        .split(RegExp(r'\s+'))
+        .where((t) => t.isNotEmpty)
+        .toList();
+
+    // ── Single token ─────────────────────────────────────────────────────────
+    if (tokens.length == 1) {
+      return _resolveToken(stripped, sw);
+    }
+
+    // ── Multi-token (sentence) ────────────────────────────────────────────────
+    // Each token is resolved independently through the full cache→DB→stemmer
+    // pipeline.  Results are scored by match count across tokens.
+    final seen = <int, Word>{};
     final tier2 = <int, _ScoredWord>{};
+    final tier3 = <int, _ScoredWord>{};
+
+    // Tier 1 equivalent: whole-phrase direct lookup
+    final phraseResults = await _directLookup(stripped, sw);
+    for (final w in phraseResults) seen[w.id] = w;
+
     for (final token in tokens) {
-      for (final word in await _repository.directArabicLookup(token)) {
-        if (seen.containsKey(word.id)) continue;
-        tier2.containsKey(word.id)
-            ? tier2[word.id]!.matchCount++
-            : tier2[word.id] = _ScoredWord(word: word, matchCount: 1);
+      // Per-token: cache → DB (no stemmer for multi-token to keep it fast)
+      final tokenResults = await _cachedDirectLookup(token, sw);
+      for (final w in tokenResults) {
+        if (seen.containsKey(w.id)) continue;
+        tier2.containsKey(w.id)
+            ? tier2[w.id]!.matchCount++
+            : tier2[w.id] = _ScoredWord(word: w, matchCount: 1);
       }
     }
 
-    // Tier 3: per-token stemmer fallback
-    final tier3 = <int, _ScoredWord>{};
+    // Tier 3: stemmer fallback per token (only for tokens with no DB hit)
     for (final token in tokens) {
-      for (final word in await _stemmerFallback(token)) {
-        if (seen.containsKey(word.id)) continue;
-        if (tier2.containsKey(word.id)) continue;
-        tier3.containsKey(word.id)
-            ? tier3[word.id]!.matchCount++
-            : tier3[word.id] = _ScoredWord(word: word, matchCount: 1);
+      if (_cache.get(token) != null) continue; // already resolved above
+      for (final w in await _stemmerFallback(token, sw)) {
+        if (seen.containsKey(w.id)) continue;
+        if (tier2.containsKey(w.id)) continue;
+        tier3.containsKey(w.id)
+            ? tier3[w.id]!.matchCount++
+            : tier3[w.id] = _ScoredWord(word: w, matchCount: 1);
       }
     }
 
     return [
-      ...directResults,
+      ...phraseResults,
       ..._sortScored(tier2),
       ..._sortScored(tier3),
     ].take(50).toList();
   }
 
-  // ── Stemmer fallback ──────────────────────────────────────────────────────────
-  //
-  // TODO: swap _stemmer for Tashaphyne or AraBERT embeddings when ready.
+  // ── Token resolution (cache → DB → stemmer) ───────────────────────────────
 
-  Future<List<Word>> _stemmerFallback(String query) async {
+  Future<List<Word>> _resolveToken(String token, Stopwatch sw) async {
+    // Tier 0: per-token cache check
+    final cached = _cache.get(token);
+    if (cached != null) {
+      debugPrint('[PERF] cache hit   : ${sw.elapsedMicroseconds}µs  "$token"');
+      return cached;
+    }
+
+    // Tier 1: DB direct lookup
+    final direct = await _directLookup(token, sw);
+    if (direct.isNotEmpty) {
+      _cache.put(token, direct);
+      debugPrint('[PERF] db direct   : ${sw.elapsedMilliseconds}ms  "$token"');
+      return direct;
+    }
+
+    // Tier 2: stemmer fallback
+    final stemmed = await _stemmerFallback(token, sw);
+    if (stemmed.isNotEmpty) _cache.put(token, stemmed);
+    debugPrint('[PERF] stemmer     : ${sw.elapsedMilliseconds}ms  "$token"');
+    return stemmed;
+  }
+
+  /// Looks up [token] in cache; falls back to DB if not found.
+  /// Writes DB results back to cache (write-through).
+  /// Used for per-token multi-token resolution.
+  Future<List<Word>> _cachedDirectLookup(String token, Stopwatch sw) async {
+    final cached = _cache.get(token);
+    if (cached != null) return cached;
+    final results = await _directLookup(token, sw);
+    if (results.isNotEmpty) _cache.put(token, results);
+    return results;
+  }
+
+  Future<List<Word>> _directLookup(String token, Stopwatch sw) async {
+    final t0 = sw.elapsedMicroseconds;
+    final results = await _repository.directArabicLookup(token);
+    debugPrint('[PERF] db direct   : ${sw.elapsedMicroseconds - t0}µs  "$token"');
+    return results;
+  }
+
+  // ── Stemmer fallback ──────────────────────────────────────────────────────
+
+  Future<List<Word>> _stemmerFallback(String query, Stopwatch sw) async {
+    final t0     = sw.elapsedMicroseconds;
     final result = _stemmer.stem(query);
     if (!result.success) return [];
 
+    List<Word> words = [];
+
     if (result.rootForDB != null) {
-      final exact = await _repository.exactRootLookup(result.rootForDB!);
-      if (exact.isNotEmpty) return exact;
-
-      final likeRoot = await _repository.likeRootLookup(result.rootForDB!);
-      if (likeRoot.isNotEmpty) return likeRoot;
+      words = await _repository.exactRootLookup(result.rootForDB!);
+      if (words.isEmpty) {
+        words = await _repository.likeRootLookup(result.rootForDB!);
+      }
     }
 
-    if (result.extractedRoot != null) {
-      return _repository.likeFormLookup(result.extractedRoot!);
+    if (words.isEmpty && result.extractedRoot != null) {
+      words = await _repository.likeFormLookup(result.extractedRoot!);
     }
 
-    return [];
+    debugPrint('[PERF] stemmer     : ${sw.elapsedMicroseconds - t0}µs  "$query"');
+    return words;
   }
 
-  // ── English search ────────────────────────────────────────────────────────────
+  // ── English search ────────────────────────────────────────────────────────
 
-  Future<List<Word>> _searchEnglish(String query) async {
+  Future<List<Word>> _searchEnglish(String query, Stopwatch sw) async {
     String lowerQuery = query.toLowerCase().trim();
-    // Strip "to " — common when users type English verb infinitives
     if (lowerQuery.startsWith('to ') && lowerQuery.length > 3) {
       lowerQuery = lowerQuery.substring(3).trim();
     }
 
-    // Tokenize — skip single-char noise words ("a", "I")
     final tokens =
         lowerQuery.split(RegExp(r'\s+')).where((t) => t.length > 1).toList();
     if (tokens.isEmpty) return [];
 
-    // Tier 1: full phrase
     final tier1 = await _repository.englishPhraseLookup(lowerQuery);
-    final seen = <int>{for (final w in tier1) w.id};
+    final seen  = <int>{for (final w in tier1) w.id};
 
-    if (tokens.length == 1) return tier1; // phrase == token, done
+    if (tokens.length == 1) return tier1;
 
-    // Tier 2: per-token word-boundary matches (score ≥ 3)
     final tier2 = <int, _ScoredWord>{};
     for (final token in tokens) {
       for (final word
@@ -148,7 +249,6 @@ class SearchManager {
     }
     final tier2Ids = tier2.keys.toSet();
 
-    // Tier 3: per-token substring matches (score ≥ 1, not in tier 2)
     final tier3 = <int, _ScoredWord>{};
     for (final token in tokens) {
       for (final word
@@ -168,7 +268,7 @@ class SearchManager {
     ].take(50).toList();
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   List<Word> _sortScored(Map<int, _ScoredWord> scored) {
     final list = scored.values.toList()
