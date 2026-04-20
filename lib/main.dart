@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:provider/provider.dart';
 
 import 'controllers/favourites_controller.dart';
 import 'controllers/recent_searches_controller.dart';
@@ -62,13 +63,15 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiRepositoryProvider(
+    return MultiProvider(
       providers: [
+        // Plain data objects — no notification needed
         RepositoryProvider.value(value: repository),
         RepositoryProvider.value(value: searchManager),
-        RepositoryProvider.value(value: themeController),
-        RepositoryProvider.value(value: recentSearches),
-        RepositoryProvider.value(value: favourites),
+        // ChangeNotifiers — must use ChangeNotifierProvider so dependents rebuild
+        ChangeNotifierProvider.value(value: themeController),
+        ChangeNotifierProvider.value(value: recentSearches),
+        ChangeNotifierProvider.value(value: favourites),
       ],
       child: MultiBlocProvider(
         providers: [
