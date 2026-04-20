@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'controllers/favourites_controller.dart';
+import 'controllers/recent_searches_controller.dart';
 import 'controllers/theme_controller.dart';
 import 'repositories/dictionary_repository.dart';
 import 'engine/stemmer.dart';
@@ -13,9 +15,6 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final repository = DictionaryRepository();
-  // New 7-tier Stemmer needs the DB handle — force the repo to open the DB
-  // up front so the stemmer can issue its own queries against `conjugations`
-  // and `lexicon` (both indexed for direct form_stripped lookup).
   final db         = await repository.rawDatabase;
   final stemmer    = Stemmer(db);
   final cache      = CacheManager();
@@ -25,27 +24,40 @@ void main() async {
     cache:      cache,
   );
 
-  // Owns the user-configurable primary colour. Rebuilds MaterialApp below
-  // whenever it notifies so theme changes take effect app-wide.
-  final themeController = ThemeController();
+  // Load persisted preferences in parallel.
+  final results = await Future.wait([
+    ThemeController.load(),
+    RecentSearchesController.load(),
+    FavouritesController.load(),
+  ]);
+
+  final themeController   = results[0] as ThemeController;
+  final recentSearches    = results[1] as RecentSearchesController;
+  final favourites        = results[2] as FavouritesController;
 
   runApp(MyApp(
-    repository: repository,
-    searchManager: search,
-    themeController: themeController,
+    repository:       repository,
+    searchManager:    search,
+    themeController:  themeController,
+    recentSearches:   recentSearches,
+    favourites:       favourites,
   ));
 }
 
 class MyApp extends StatelessWidget {
-  final DictionaryRepository repository;
-  final SearchManager searchManager;
-  final ThemeController themeController;
+  final DictionaryRepository      repository;
+  final SearchManager             searchManager;
+  final ThemeController           themeController;
+  final RecentSearchesController  recentSearches;
+  final FavouritesController      favourites;
 
   const MyApp({
     Key? key,
     required this.repository,
     required this.searchManager,
     required this.themeController,
+    required this.recentSearches,
+    required this.favourites,
   }) : super(key: key);
 
   @override
@@ -55,6 +67,8 @@ class MyApp extends StatelessWidget {
         RepositoryProvider.value(value: repository),
         RepositoryProvider.value(value: searchManager),
         RepositoryProvider.value(value: themeController),
+        RepositoryProvider.value(value: recentSearches),
+        RepositoryProvider.value(value: favourites),
       ],
       child: MultiBlocProvider(
         providers: [
@@ -66,15 +80,31 @@ class MyApp extends StatelessWidget {
           animation: themeController,
           builder: (context, _) {
             final Color primary = themeController.primaryColor;
+            final bool  isDark  = themeController.isDark;
+
+            final lightScheme = ColorScheme.fromSeed(
+              seedColor: primary,
+              primary: primary,
+            );
+            final darkScheme = ColorScheme.fromSeed(
+              seedColor: primary,
+              primary: primary,
+              brightness: Brightness.dark,
+            );
+
             return MaterialApp(
               title: 'Arabic Dictionary',
               debugShowCheckedModeBanner: false,
+              themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
               theme: ThemeData(
+                colorScheme: lightScheme,
                 primaryColor: primary,
-                colorScheme: ColorScheme.fromSeed(
-                  seedColor: primary,
-                  primary: primary,
-                ),
+                useMaterial3: true,
+              ),
+              darkTheme: ThemeData(
+                colorScheme: darkScheme,
+                primaryColor: primary,
+                useMaterial3: true,
               ),
               home: SearchScreen(),
             );

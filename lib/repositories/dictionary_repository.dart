@@ -283,6 +283,43 @@ class DictionaryRepository {
     return maps.map((m) => Word.fromMap(m)).toList();
   }
 
+  // ── Root family ───────────────────────────────────────────────────────────────
+
+  /// All words sharing the same root, capped at [limit] to prevent
+  /// common roots (ك-ت-ب etc.) from flooding the tab.
+  Future<List<Word>> getRootFamily(String root, {int limit = 10}) async {
+    final db = await database;
+    final maps = await db.rawQuery('''
+      SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic
+      FROM lexicon l
+      LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
+      LEFT JOIN lexicon parent ON l.base_form_id = parent.id
+      WHERE l.root = ?
+      ORDER BY l.is_common DESC, l.frequency DESC
+      LIMIT ?
+    ''', [root, limit]);
+    return maps.map((m) => Word.fromMap(m)).toList();
+  }
+
+  // ── Favourites ────────────────────────────────────────────────────────────────
+
+  /// Fetches full Word objects for a list of IDs (used by FavouritesScreen).
+  Future<List<Word>> getFavouriteWords(List<int> ids) async {
+    if (ids.isEmpty) return [];
+    final db = await database;
+    final placeholders = ids.map((_) => '?').join(',');
+    final maps = await db.rawQuery('''
+      SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic
+      FROM lexicon l
+      LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
+      LEFT JOIN lexicon parent ON l.base_form_id = parent.id
+      WHERE l.id IN ($placeholders)
+    ''', ids);
+    // Preserve the order the user starred them (ids list order).
+    final byId = {for (final w in maps.map((m) => Word.fromMap(m))) w.id: w};
+    return ids.map((id) => byId[id]).whereType<Word>().toList();
+  }
+
   // ── Conjugation ───────────────────────────────────────────────────────────────
   //
   // Keeps ConjugationEngine creation here so cubits never touch the raw db handle.

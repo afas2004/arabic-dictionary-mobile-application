@@ -18,15 +18,19 @@ class WordDetailLoaded extends WordDetailState {
   final Word word;
   final List<Meaning> meanings;
   final ConjugationTable? conjugationTable;
+  final List<Word> rootFamily;
+  final List<Word> relatedForms;
 
   WordDetailLoaded({
     required this.word,
     required this.meanings,
     this.conjugationTable,
+    this.rootFamily = const [],
+    this.relatedForms = const [],
   });
 
   @override
-  List<Object?> get props => [word, meanings, conjugationTable];
+  List<Object?> get props => [word, meanings, conjugationTable, rootFamily, relatedForms];
 }
 
 class WordDetailError extends WordDetailState {
@@ -48,11 +52,20 @@ class WordDetailCubit extends Cubit<WordDetailState> {
   Future<void> loadDetails(Word word) async {
     emit(WordDetailLoading());
     try {
-      final meanings = await _repository.getMeanings(word.id);
-      // Repository handles ConjugationEngine instantiation — cubit never
-      // touches the raw db handle.
-      final table = await _repository.getConjugationTable(word);
-      emit(WordDetailLoaded(word: word, meanings: meanings, conjugationTable: table));
+      final results = await Future.wait([
+        _repository.getMeanings(word.id),
+        _repository.getConjugationTable(word),
+        _repository.getRootFamily(word.root),
+        _repository.getRelatedForms(word.id),
+      ]);
+
+      emit(WordDetailLoaded(
+        word: word,
+        meanings: results[0] as List<Meaning>,
+        conjugationTable: results[1] as ConjugationTable?,
+        rootFamily: results[2] as List<Word>,
+        relatedForms: results[3] as List<Word>,
+      ));
     } catch (e) {
       emit(WordDetailError(e.toString()));
     }

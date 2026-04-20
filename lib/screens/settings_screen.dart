@@ -1,8 +1,4 @@
 // lib/screens/settings_screen.dart
-//
-// Settings screen — currently exposes theme-colour personalisation only.
-// Built as a stub so later additions (font size, Arabic font family,
-// light/dark toggle, cache controls) can slot in without a rewrite.
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -38,11 +34,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final Color primary = widget.controller.primaryColor;
+    final bool isDark   = widget.controller.isDark;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black87),
         title: Text(
@@ -56,14 +53,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // ── Theme color section ──────────────────────────────────────
+          // ── Theme color section ────────────────────────────────────
           _SectionHeader(title: 'Theme color'),
           const SizedBox(height: 12),
           Wrap(
             spacing: 14,
             runSpacing: 14,
             children: ThemeController.swatches.map((c) {
-              final bool selected = c.value == primary.value;
+              final bool selected = c.toARGB32() == primary.toARGB32();
               return _SwatchTile(
                 color: c,
                 selected: selected,
@@ -73,8 +70,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Changes the accent color used across the app. More personalisation '
-            '(font size, light/dark mode) will land in a future version.',
+            'Changes the accent color. Your choice is saved across restarts.',
             style: GoogleFonts.manrope(
               fontSize: 12,
               color: Colors.grey[500],
@@ -82,9 +78,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
-          const SizedBox(height: 32),
+          const SizedBox(height: 28),
 
-          // ── About section ────────────────────────────────────────────
+          // ── Dark mode section ──────────────────────────────────────
+          _SectionHeader(title: 'Appearance'),
+          const SizedBox(height: 4),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(
+              'Dark mode',
+              style: GoogleFonts.manrope(
+                fontSize: 14,
+                color: Colors.black87,
+              ),
+            ),
+            value: isDark,
+            activeThumbColor: Theme.of(context).colorScheme.primary,
+            onChanged: (val) => widget.controller.setDarkMode(val),
+          ),
+
+          const SizedBox(height: 28),
+
+          // ── About section ──────────────────────────────────────────
           _SectionHeader(title: 'About'),
           const SizedBox(height: 8),
           Text(
