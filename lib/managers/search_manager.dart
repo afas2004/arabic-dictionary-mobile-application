@@ -31,19 +31,19 @@
 import 'package:flutter/foundation.dart';
 import '../models/models.dart';
 import '../repositories/dictionary_repository.dart';
-import '../engine/arabic_stemmer.dart';
+import '../engine/stemmer.dart';
 import 'cache_manager.dart';
 
 class SearchManager {
   final DictionaryRepository _repository;
-  final ArabicStemmer        _stemmer;
+  final Stemmer              _stemmer;
   final CacheManager         _cache;
 
   bool _preWarmed = false;
 
   SearchManager({
     required DictionaryRepository repository,
-    required ArabicStemmer stemmer,
+    required Stemmer stemmer,
     required CacheManager cache,
   })  : _repository = repository,
         _stemmer    = stemmer,
@@ -197,27 +197,43 @@ class SearchManager {
   }
 
   // ── Stemmer fallback ──────────────────────────────────────────────────────
+  //
+  // The new 7-tier Stemmer already performs all DB lookups internally and
+  // returns a resolved `lexicon.id` on success.  SearchManager's only job here
+  // is to turn that id into a full `Word` for the UI layer.  On a fuzzy-root
+  // hit we also broaden the result set via `exactRootLookup` so the detail
+  // page has siblings to show.
 
   Future<List<Word>> _stemmerFallback(String query, Stopwatch sw) async {
     final t0     = sw.elapsedMicroseconds;
-    final result = _stemmer.stem(query);
-    if (!result.success) return [];
+    final result = await _stemmer.resolve(query);
+    if (!result.success || result.lexiconId == null) {
+      debugPrint('[PERF] stemmer     : ${sw.elapsedMicroseconds - t0}µs  '
+          '"$query" → miss');
+      return [];
+    }
 
-    List<Word> words = [];
-
-    if (result.rootForDB != null) {
-      words = await _repository.exactRootLookup(result.rootForDB!);
-      if (words.isEmpty) {
-        words = await _repository.likeRootLookup(result.rootForDB!);
+    // Fuzzy-root hits are low-confidence — broaden to all words sharing the
+    // extracted root so the user has options.
+    if (result.source == StemSource.fuzzyRoot && result.extractedRoot != null) {
+      final dashed = result.extractedRoot!.split('').join('-');
+      final words = await _repository.exactRootLookup(dashed);
+      if (words.isNotEmpty) {
+        debugPrint('[PERF] stemmer     : ${sw.elapsedMicroseconds - t0}µs  '
+            '"$query" → fuzzyRoot ${words.length} results');
+        return words;
       }
+      final like = await _repository.likeRootLookup(dashed);
+      debugPrint('[PERF] stemmer     : ${sw.elapsedMicroseconds - t0}µs  '
+          '"$query" → fuzzyRoot-like ${like.length} results');
+      return like;
     }
 
-    if (words.isEmpty && result.extractedRoot != null) {
-      words = await _repository.likeFormLookup(result.extractedRoot!);
-    }
-
-    debugPrint('[PERF] stemmer     : ${sw.elapsedMicroseconds - t0}µs  "$query"');
-    return words;
+    // High-confidence hits (T1–T6) — return the single resolved base form.
+    final word = await _repository.getWordById(result.lexiconId!);
+    debugPrint('[PERF] stemmer     : ${sw.elapsedMicroseconds - t0}µs  '
+        '"$query" → ${result.source.name} id=${result.lexiconId}');
+    return word == null ? [] : [word];
   }
 
   // ── English search ────────────────────────────────────────────────────────

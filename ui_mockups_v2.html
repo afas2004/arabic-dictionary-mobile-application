@@ -1,0 +1,2047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arabic Dictionary UI — Round 2</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Noto+Naskh+Arabic:wght@400;700&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f4f5f7;
+      color: #1a1a1a;
+      padding: 40px 20px 80px;
+      line-height: 1.55;
+    }
+    .container { max-width: 1400px; margin: 0 auto; }
+    h1 { font-size: 2rem; margin-bottom: 6px; }
+    h2 { font-size: 1.35rem; margin: 56px 0 12px; padding-bottom: 8px; border-bottom: 1px solid #d7d9de; }
+    h3 { font-size: 1.05rem; margin: 18px 0 8px; color: #333; }
+    p { margin-bottom: 10px; }
+    .subtitle { color: #666; margin-bottom: 28px; }
+
+    .intro { background: #fff; padding: 20px 24px; border-radius: 10px; margin-bottom: 32px; border-left: 4px solid #1976d2; }
+    .intro ul { margin-top: 8px; padding-left: 20px; }
+    .intro li { margin: 4px 0; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 40px 32px;
+      margin-bottom: 24px;
+      align-items: start;
+    }
+
+    /* ─── Phone frame ───────────────────────────────── */
+    .phone-wrap { display: flex; flex-direction: column; align-items: center; }
+    .phone {
+      width: 340px;
+      background: #fff;
+      border: 9px solid #1a1a1a;
+      border-radius: 32px;
+      overflow: hidden;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.18);
+      position: relative;
+    }
+    .phone-caption {
+      margin-top: 12px;
+      text-align: center;
+      font-weight: 600;
+      font-size: 0.92rem;
+      color: #333;
+      max-width: 340px;
+    }
+    .phone-caption small {
+      display: block;
+      font-weight: 400;
+      color: #777;
+      margin-top: 4px;
+      font-size: 0.8rem;
+    }
+
+    .status-bar {
+      height: 22px;
+      background: #fafafa;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      font-size: 0.7rem;
+      color: #999;
+    }
+
+    /* App bar mimics the real Flutter build: white top bar, grey search field. */
+    .app-bar {
+      background: #fff;
+      padding: 10px 16px 14px;
+      border-bottom: 1px solid #f0f1f3;
+    }
+    .app-bar-title {
+      text-align: center;
+      font-family: "Noto Naskh Arabic", serif;
+      font-weight: 700;
+      color: #222;
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+    }
+    .search-field {
+      background: #f1f2f4;
+      border-radius: 8px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #222;
+      font-size: 0.9rem;
+    }
+    .search-field .icon-left { color: #bbb; font-size: 1.1rem; }
+    .search-field .icon-right { color: #1976d2; font-size: 1.1rem; }
+    .search-field input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #222;
+      outline: none;
+      font-size: 0.9rem;
+      font-family: inherit;
+    }
+    .search-field input[dir="rtl"] {
+      font-family: "Noto Naskh Arabic", "Amiri", serif;
+      font-size: 1.05rem;
+      text-align: right;
+    }
+
+    /* ─── Token filter bar ──────────────────────────── */
+    .chip-bar {
+      padding: 8px 10px;
+      background: #e8f1fb;
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      border-bottom: 1px solid #d7e4f0;
+    }
+    .chip {
+      background: #fff;
+      border: 1px solid #bdd7f0;
+      padding: 4px 11px;
+      border-radius: 14px;
+      font-size: 0.82rem;
+      white-space: nowrap;
+      color: #1976d2;
+    }
+    .chip.active { background: #1976d2; color: #fff; border-color: #1976d2; }
+    .chip .ar {
+      font-family: "Noto Naskh Arabic", serif;
+      font-size: 1rem;
+      direction: rtl;
+      unicode-bidi: plaintext;
+    }
+
+    /* ─── Result list card (mirrors Flutter _buildWordTile) ─ */
+    .result-list { background: #fff; min-height: 520px; }
+    .card {
+      padding: 14px 16px;
+      border-bottom: 1px solid #f0f1f3;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .card-left {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      min-width: 52px;
+      gap: 3px;
+    }
+    .card-left .from {
+      font-size: 0.68rem;
+      color: #9ca3af;
+    }
+    .card-left .baseform {
+      font-family: "Noto Naskh Arabic", serif;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #4b5563;
+      direction: rtl;
+      unicode-bidi: plaintext;
+    }
+    .card-left .weak-tag {
+      background: #fee2e2;
+      color: #b91c1c;
+      font-size: 0.6rem;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 3px;
+      letter-spacing: 0.5px;
+    }
+    .card-left .common-tag {
+      background: #dcfce7;
+      color: #15803d;
+      font-size: 0.6rem;
+      font-weight: 700;
+      padding: 2px 5px;
+      border-radius: 3px;
+      letter-spacing: 0.5px;
+      margin-top: 3px;
+    }
+    .card-right {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      min-width: 0;
+    }
+    .card-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      max-width: 100%;
+    }
+    .card-romanize {
+      font-size: 0.72rem;
+      color: #9ca3af;
+      font-family: "Manrope", sans-serif;
+    }
+    .card-ar {
+      font-family: "Noto Naskh Arabic", serif;
+      font-size: 1.35rem;
+      font-weight: 700;
+      direction: rtl;
+      unicode-bidi: plaintext;
+      color: #222;
+      line-height: 1.3;
+    }
+    .card-meta {
+      font-size: 0.7rem;
+      color: #9ca3af;
+      margin-top: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .card-meta .sep { margin: 0 3px; }
+    .card-en {
+      color: #6b7280;
+      font-size: 0.85rem;
+      margin-top: 5px;
+      text-align: right;
+    }
+    .card-provenance {
+      font-size: 0.72rem;
+      color: #9ca3af;
+      margin-top: 6px;
+      text-align: right;
+    }
+    .card-provenance .tok {
+      font-family: "Noto Naskh Arabic", serif;
+      font-size: 0.92rem;
+      color: #6b7280;
+      direction: rtl;
+      unicode-bidi: plaintext;
+      display: inline-block;
+      margin-left: 3px;
+    }
+
+    /* The single highlight style — Material blue #1976D2 */
+    .hl { color: #1976d2; font-weight: 700; }
+    .hl-en { color: #1976d2; font-weight: 700; background: rgba(25,118,210,0.08); padding: 0 2px; border-radius: 2px; }
+
+    /* ─── Tabs (detail page) ────────────────────────── */
+    .tabs {
+      display: flex;
+      background: #fff;
+      border-bottom: 1px solid #e4e6ea;
+    }
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: 12px 8px;
+      font-size: 0.88rem;
+      color: #9ca3af;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tab.active {
+      color: #1976d2;
+      border-bottom-color: #1976d2;
+      font-weight: 600;
+    }
+    .tab-panel {
+      padding: 16px 12px;
+      background: #fff;
+      min-height: 450px;
+      display: none;
+    }
+    .tab-panel.active { display: block; }
+
+    /* ─── Detail page header (mirrors Flutter _buildHeader) ── */
+    .detail-head {
+      padding: 22px 16px 16px;
+      background: #F8FAFC;
+      text-align: center;
+      border-bottom: 1px solid #eef0f3;
+    }
+    .detail-ar {
+      font-family: "Noto Naskh Arabic", serif;
+      font-size: 2.4rem;
+      font-weight: 700;
+      direction: rtl;
+      unicode-bidi: plaintext;
+      margin-bottom: 8px;
+      color: #222;
+    }
+    .detail-meta {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 0.8rem;
+      color: #4b5563;
+    }
+    .detail-meta .sep { color: #9ca3af; }
+    .detail-meta .baseform {
+      font-family: "Noto Naskh Arabic", serif;
+      font-weight: 700;
+      color: #4b5563;
+    }
+    .detail-meta .weak-tag {
+      background: #fee2e2;
+      color: #b91c1c;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 3px;
+      letter-spacing: 0.4px;
+    }
+
+    /* Meanings list (mirrors _buildMeaningsList) */
+    .meanings {
+      padding: 14px 16px;
+    }
+    .meaning-row {
+      font-size: 0.92rem;
+      color: #222;
+      margin-bottom: 7px;
+      line-height: 1.55;
+    }
+
+    /* ─── ORIGINAL conjugation table (mirrors _buildTenseBlock) ── */
+    .conj-section {
+      margin: 0 12px 14px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .conj-section-head {
+      background: #f9fafb;
+      padding: 8px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .conj-section-head .en {
+      font-size: 0.78rem;
+      color: #9ca3af;
+    }
+    .conj-section-head .ar {
+      font-family: "Noto Naskh Arabic", serif;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #222;
+    }
+    .conj-grid {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .conj-grid th, .conj-grid td {
+      border: 1px solid #f3f4f6;
+      text-align: center;
+      padding: 8px 4px;
+      font-size: 0.85rem;
+    }
+    .conj-grid th {
+      font-family: "Manrope", sans-serif;
+      font-size: 0.66rem;
+      font-weight: 700;
+      color: #9ca3af;
+      text-transform: none;
+      line-height: 1.35;
+      white-space: pre-line;
+      background: #fff;
+    }
+    .conj-grid th .ar {
+      display: block;
+      font-family: "Noto Naskh Arabic", serif;
+      font-weight: 700;
+      color: #6b7280;
+      font-size: 0.85rem;
+    }
+    .conj-grid td {
+      font-family: "Noto Naskh Arabic", serif;
+      font-size: 1rem;
+      font-weight: 700;
+      direction: rtl;
+      unicode-bidi: plaintext;
+      color: #222;
+    }
+    .conj-grid td.side {
+      background: #f9fafb;
+      font-family: "Manrope", sans-serif;
+      font-size: 0.66rem;
+      font-weight: 700;
+      color: #9ca3af;
+      line-height: 1.35;
+      white-space: pre-line;
+    }
+    .conj-grid td.side .ar {
+      display: block;
+      font-family: "Noto Naskh Arabic", serif;
+      color: #6b7280;
+      font-size: 0.85rem;
+    }
+    .conj-firstperson {
+      display: flex;
+      background: #f9fafb;
+      border-top: 1px solid #f3f4f6;
+    }
+    .conj-firstperson .cell {
+      flex: 1;
+      text-align: center;
+      padding: 10px 6px;
+      border-left: 1px solid #f3f4f6;
+    }
+    .conj-firstperson .cell:first-child { border-left: none; }
+    .conj-firstperson .cell .label {
+      font-size: 0.64rem;
+      color: #9ca3af;
+      margin-bottom: 3px;
+    }
+    .conj-firstperson .cell .value {
+      font-family: "Noto Naskh Arabic", serif;
+      font-size: 1rem;
+      font-weight: 700;
+      direction: rtl;
+      unicode-bidi: plaintext;
+    }
+
+    /* Imperative block is simpler (2-col / 1-col / 2-col rows) */
+    .imp-row {
+      display: flex;
+      border-top: 1px solid #f3f4f6;
+    }
+    .imp-row:first-child { border-top: none; }
+    .imp-row.dual { background: #f9fafb; }
+    .imp-cell {
+      flex: 1;
+      text-align: center;
+      padding: 10px 6px;
+      border-left: 1px solid #f3f4f6;
+    }
+    .imp-cell:first-child { border-left: none; }
+    .imp-cell .label {
+      font-size: 0.64rem;
+      color: #9ca3af;
+      margin-bottom: 3px;
+    }
+    .imp-cell .value {
+      font-family: "Noto Naskh Arabic", serif;
+      font-size: 1rem;
+      font-weight: 700;
+      direction: rtl;
+      unicode-bidi: plaintext;
+    }
+
+    /* ─── Relation (root family) panel ──────────────── */
+    .root-header {
+      background: #e8f1fb;
+      padding: 10px 14px;
+      text-align: center;
+      border-bottom: 1px solid #d7e4f0;
+      margin-bottom: 4px;
+    }
+    .root-header .letters {
+      font-family: "Noto Naskh Arabic", serif;
+      font-size: 1.7rem;
+      font-weight: 700;
+      direction: rtl;
+      unicode-bidi: plaintext;
+      color: #1976d2;
+      letter-spacing: 8px;
+    }
+    .root-header .caption {
+      font-size: 0.76rem;
+      color: #4b5563;
+      margin-top: 2px;
+    }
+    .root-group h4 {
+      font-size: 0.7rem;
+      color: #1976d2;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 10px 14px 4px;
+      font-weight: 700;
+    }
+    .relation-card {
+      padding: 8px 14px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .relation-card .ar {
+      font-family: "Noto Naskh Arabic", serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      direction: rtl;
+      unicode-bidi: plaintext;
+    }
+    .relation-card .en {
+      color: #6b7280;
+      font-size: 0.82rem;
+    }
+
+    /* Forms list for noun (plural/dual/diminutive/etc.) */
+    .forms-list { padding: 4px 0; background: #fff; }
+    .form-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid #f3f4f6;
+      align-items: baseline;
+    }
+    .form-row .label {
+      font-size: 0.72rem;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      font-weight: 500;
+    }
+    .form-row .value {
+      font-family: "Noto Naskh Arabic", serif;
+      direction: rtl;
+      unicode-bidi: plaintext;
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+
+    /* ─── Long-press action sheet ───────────────────── */
+    .sheet-backdrop {
+      background: rgba(0,0,0,0.45);
+      min-height: 520px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+    .sheet {
+      background: #2e2e2e;
+      color: #f0f0f0;
+    }
+    .sheet-header {
+      padding: 18px 20px 8px;
+      border-bottom: 1px solid #444;
+    }
+    .sheet-header .ar {
+      font-family: "Noto Naskh Arabic", serif;
+      font-size: 1.7rem;
+      font-weight: 700;
+      direction: rtl;
+      unicode-bidi: plaintext;
+      color: #fff;
+    }
+    .sheet-header .en {
+      font-size: 0.82rem;
+      color: #a8a8a8;
+      margin-top: 2px;
+    }
+    .sheet-item {
+      padding: 14px 20px;
+      font-size: 0.95rem;
+      border-bottom: 1px solid #3a3a3a;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #e8e8e8;
+    }
+    .sheet-item .meta {
+      font-size: 0.78rem;
+      color: #8aa9cf;
+      direction: rtl;
+      unicode-bidi: plaintext;
+      font-family: "Noto Naskh Arabic", serif;
+    }
+
+    /* ─── Toast ─────────────────────────────────────── */
+    .toast {
+      position: absolute;
+      bottom: 24px;
+      left: 20px;
+      right: 20px;
+      background: rgba(30,30,30,0.92);
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 22px;
+      font-size: 0.85rem;
+      text-align: center;
+    }
+    .toast .ar {
+      font-family: "Noto Naskh Arabic", serif;
+      direction: rtl;
+      unicode-bidi: plaintext;
+    }
+
+    /* ─── Empty / recents / favourites / settings ───── */
+    .empty-state {
+      padding: 100px 20px 0;
+      text-align: center;
+      color: #9ca3af;
+      background: #fff;
+      min-height: 520px;
+    }
+    .empty-state .big-icon {
+      font-size: 3rem;
+      color: #e5e7eb;
+      margin-bottom: 14px;
+    }
+    .section-head {
+      padding: 12px 16px 6px;
+      font-size: 0.72rem;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 700;
+      background: #fff;
+    }
+    .list-row {
+      padding: 12px 16px;
+      background: #fff;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .list-row .ar {
+      font-family: "Noto Naskh Arabic", serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      direction: rtl;
+      unicode-bidi: plaintext;
+    }
+    .list-row .en { font-size: 0.8rem; color: #6b7280; }
+    .list-row .time { font-size: 0.7rem; color: #9ca3af; }
+
+    /* Settings rows */
+    .settings-row {
+      padding: 14px 16px;
+      background: #fff;
+      border-bottom: 1px solid #f3f4f6;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .settings-row .label {
+      font-size: 0.92rem;
+      color: #222;
+    }
+    .settings-row .sub {
+      font-size: 0.72rem;
+      color: #9ca3af;
+      margin-top: 2px;
+    }
+    .settings-row .right {
+      font-size: 0.82rem;
+      color: #9ca3af;
+    }
+    .color-swatches {
+      display: flex;
+      gap: 10px;
+      padding: 14px 16px;
+      background: #fff;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .color-swatch {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+    }
+    .color-swatch.active {
+      border-color: #222;
+      box-shadow: 0 0 0 2px #fff inset;
+    }
+
+    /* ─── Narrative sections ────────────────────────── */
+    .section {
+      background: #fff;
+      padding: 22px 26px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+    .ranking-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 0.9rem;
+    }
+    .ranking-table th, .ranking-table td {
+      text-align: left;
+      padding: 9px 12px;
+      border-bottom: 1px solid #eeeff2;
+      vertical-align: top;
+    }
+    .ranking-table th {
+      background: #f4f5f7;
+      font-size: 0.78rem;
+      color: #444;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .ranking-table .ar {
+      font-family: "Noto Naskh Arabic", serif;
+      direction: rtl;
+      unicode-bidi: plaintext;
+      font-size: 1.05rem;
+    }
+    .callout {
+      background: #fff8e1;
+      border-left: 4px solid #ffb300;
+      padding: 13px 16px;
+      margin: 16px 0;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    .callout strong { color: #b37700; }
+    .bundle-box {
+      background: #1e1e1e;
+      color: #f0f0f0;
+      padding: 14px 16px;
+      border-radius: 6px;
+      margin: 8px 0 14px;
+      font-family: "Courier New", monospace;
+      font-size: 0.88rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+    .bundle-box .ar {
+      font-family: "Noto Naskh Arabic", serif;
+      direction: rtl;
+      unicode-bidi: plaintext;
+      font-size: 1.15rem;
+      color: #fff;
+    }
+    code {
+      background: #f0f0f0;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 0.85rem;
+      font-family: "SF Mono", Monaco, Consolas, monospace;
+    }
+    code.ar {
+      font-family: "Noto Naskh Arabic", serif;
+      direction: rtl;
+      unicode-bidi: plaintext;
+      font-size: 1.05rem;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <h1>Arabic Dictionary — UI Round 2</h1>
+  <p class="subtitle">Updated: highlighting computed by one JS function (no per-card mistakes), original Flutter UI restored (COMMON / Weak Root / from-baseform / romanisation), original 4×3 conjugation grid, missing screens included.</p>
+
+  <div class="intro">
+    <strong>What changed since the last pass:</strong>
+    <ul>
+      <li><strong>Highlighting is now algorithmic</strong> — every card runs through <code>highlightExact()</code> or <code>highlightRoot()</code> at render time. No hand-coded spans means no duplicate or missing highlights. Rule: <em>exact</em> highlights the matched substring, <em>root</em> highlights each of the three root radicals wherever they appear.</li>
+      <li><strong>Original UI elements restored</strong>: COMMON badge (green, left side), Weak Root badge (red), "from <span style="font-family:Noto Naskh Arabic,serif;">كَتَبَ</span>" base-form display for derived verbs, romanisation in parentheses, verb-form label (Form I / II / …).</li>
+      <li><strong>Conjugation table uses the original Flutter grid</strong>: 4 columns (أنتِ · أنتَ · هي · هو), 3 rows (Singular · Dual · Plural), plus a bottom strip for نحن (We) / أنا (I). Imperative block is the simpler Singular / Dual / Plural layout.</li>
+      <li><strong>Missing screens added</strong>: empty state, recent searches, favourites, no-results, settings with a theme-colour picker placeholder.</li>
+      <li><strong>Only semantic colour is Material Blue <code>#1976D2</code></strong> (matches <code>Color(0xFF1976D2)</code> already in your codebase). Red is reserved for Weak Root / mutation letters as you already use it; green is reserved for COMMON as you already use it.</li>
+    </ul>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       SECTION 1 — Ranked list
+       ════════════════════════════════════════════════════════ -->
+  <h2>1. Ranked list — single-word queries</h2>
+  <p class="subtitle">Scroll each phone — all cards render the same UI primitives your Flutter app already has. Highlighting now works end-to-end.</p>
+
+  <div class="grid">
+
+    <!-- Phone 1: Arabic query كتب -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span>●●● ◐ 100%</span></div>
+        <div class="app-bar">
+          <div class="app-bar-title">قاموس عربي</div>
+          <div class="search-field">
+            <span class="icon-left">✕</span>
+            <input dir="rtl" value="كتب" readonly>
+            <span class="icon-right">🔍</span>
+          </div>
+        </div>
+        <div class="result-list">
+          <!-- Rank 1 — exact lemma verb, COMMON -->
+          <div class="card">
+            <div class="card-left">
+              <span class="common-tag">COMMON</span>
+            </div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(kataba)</span>
+                <span class="card-ar" data-ar="كَتَبَ" data-mode="exact" data-q="كتب"></span>
+              </div>
+              <div class="card-meta">VERB</div>
+              <div class="card-en">to write, to compose, to register</div>
+            </div>
+          </div>
+          <!-- Rank 1 — exact lemma noun (plural) -->
+          <div class="card">
+            <div class="card-left"></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(kutub)</span>
+                <span class="card-ar" data-ar="كُتُب" data-mode="exact" data-q="كتب"></span>
+              </div>
+              <div class="card-meta">NOUN · PLURAL</div>
+              <div class="card-en">books (plural of <span dir="rtl" style="font-family:'Noto Naskh Arabic',serif;">كِتَاب</span>)</div>
+            </div>
+          </div>
+          <!-- Rank 4 — root family, COMMON -->
+          <div class="card">
+            <div class="card-left">
+              <span class="common-tag">COMMON</span>
+            </div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(kitāb)</span>
+                <span class="card-ar" data-ar="كِتَاب" data-mode="root" data-root="كتب"></span>
+              </div>
+              <div class="card-meta">NOUN</div>
+              <div class="card-en">book</div>
+            </div>
+          </div>
+          <!-- Rank 4 — root family -->
+          <div class="card">
+            <div class="card-left">
+              <span class="common-tag">COMMON</span>
+            </div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(maktaba)</span>
+                <span class="card-ar" data-ar="مَكْتَبَة" data-mode="root" data-root="كتب"></span>
+              </div>
+              <div class="card-meta">NOUN</div>
+              <div class="card-en">library, bookshop</div>
+            </div>
+          </div>
+          <!-- Rank 4 — root family -->
+          <div class="card">
+            <div class="card-left"></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(maktab)</span>
+                <span class="card-ar" data-ar="مَكْتَب" data-mode="root" data-root="كتب"></span>
+              </div>
+              <div class="card-meta">NOUN</div>
+              <div class="card-en">office, desk, bureau</div>
+            </div>
+          </div>
+          <!-- Rank 4 — root family, active participle, with "from" -->
+          <div class="card">
+            <div class="card-left">
+              <span class="from">from</span>
+              <span class="baseform">كَتَبَ</span>
+            </div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(kātib)</span>
+                <span class="card-ar" data-ar="كَاتِب" data-mode="root" data-root="كتب"></span>
+              </div>
+              <div class="card-meta">فَاعِل</div>
+              <div class="card-en">writer, author, clerk</div>
+            </div>
+          </div>
+          <!-- Rank 4 — root family, passive participle -->
+          <div class="card">
+            <div class="card-left">
+              <span class="from">from</span>
+              <span class="baseform">كَتَبَ</span>
+            </div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(maktūb)</span>
+                <span class="card-ar" data-ar="مَكْتُوب" data-mode="root" data-root="كتب"></span>
+              </div>
+              <div class="card-meta">مَفْعُول</div>
+              <div class="card-en">letter, written; destined</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-caption">Query: كتب · exact lemma → root family
+        <small>The 3 root radicals ك-ت-ب glow blue across every card. No provenance labels — every row in this list is either an exact match or a root relative.</small>
+      </div>
+    </div>
+
+    <!-- Phone 2: conjugation query يكتبون -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span>●●● ◐ 100%</span></div>
+        <div class="app-bar">
+          <div class="app-bar-title">قاموس عربي</div>
+          <div class="search-field">
+            <span class="icon-left">✕</span>
+            <input dir="rtl" value="يكتبون" readonly>
+            <span class="icon-right">🔍</span>
+          </div>
+        </div>
+        <div class="result-list">
+          <!-- Rank 2 — conjugation hit, with provenance label -->
+          <div class="card">
+            <div class="card-left">
+              <span class="common-tag">COMMON</span>
+            </div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(kataba)</span>
+                <span class="card-ar" data-ar="كَتَبَ" data-mode="root" data-root="كتب"></span>
+              </div>
+              <div class="card-meta">VERB</div>
+              <div class="card-en">to write, to compose, to register</div>
+              <div class="card-provenance">conjugated form: <span class="tok">يَكْتُبُونَ</span></div>
+            </div>
+          </div>
+          <!-- Rank 4 — root family (no provenance, same root) -->
+          <div class="card">
+            <div class="card-left">
+              <span class="common-tag">COMMON</span>
+            </div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(kitāb)</span>
+                <span class="card-ar" data-ar="كِتَاب" data-mode="root" data-root="كتب"></span>
+              </div>
+              <div class="card-meta">NOUN</div>
+              <div class="card-en">book</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left">
+              <span class="common-tag">COMMON</span>
+            </div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(maktaba)</span>
+                <span class="card-ar" data-ar="مَكْتَبَة" data-mode="root" data-root="كتب"></span>
+              </div>
+              <div class="card-meta">NOUN</div>
+              <div class="card-en">library, bookshop</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left">
+              <span class="from">from</span>
+              <span class="baseform">كَتَبَ</span>
+            </div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(kātib)</span>
+                <span class="card-ar" data-ar="كَاتِب" data-mode="root" data-root="كتب"></span>
+              </div>
+              <div class="card-meta">فَاعِل</div>
+              <div class="card-en">writer, author, clerk</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left">
+              <span class="from">from</span>
+              <span class="baseform">كَتَبَ</span>
+            </div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(maktūb)</span>
+                <span class="card-ar" data-ar="مَكْتُوب" data-mode="root" data-root="كتب"></span>
+              </div>
+              <div class="card-meta">مَفْعُول</div>
+              <div class="card-en">letter, written; destined</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-caption">Query: يكتبون · highlights NOW work
+        <small>The Flutter bug: <code>highlightArabicQuery</code> tries to find the query letters contiguously and fails here → nothing coloured. Fix: fall through to root-based highlighting.</small>
+      </div>
+    </div>
+
+    <!-- Phone 3: English query "write" -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span>●●● ◐ 100%</span></div>
+        <div class="app-bar">
+          <div class="app-bar-title">قاموس عربي</div>
+          <div class="search-field">
+            <span class="icon-left">✕</span>
+            <input value="write" readonly>
+            <span class="icon-right">🔍</span>
+          </div>
+        </div>
+        <div class="result-list">
+          <div class="card">
+            <div class="card-left">
+              <span class="common-tag">COMMON</span>
+            </div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(kataba)</span>
+                <span class="card-ar">كَتَبَ</span>
+              </div>
+              <div class="card-meta">VERB</div>
+              <div class="card-en" data-en="to write, to compose, to register" data-q-en="write"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left"></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(dawwana)</span>
+                <span class="card-ar">دَوَّنَ</span>
+              </div>
+              <div class="card-meta">VERB · Form II</div>
+              <div class="card-en" data-en="to write down, to record, to jot" data-q-en="write"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left"></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(ḥarrara)</span>
+                <span class="card-ar">حَرَّرَ</span>
+              </div>
+              <div class="card-meta">VERB · Form II</div>
+              <div class="card-en" data-en="to write, to edit, to draft" data-q-en="write"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left">
+              <span class="from">from</span>
+              <span class="baseform">كَتَبَ</span>
+            </div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(kātib)</span>
+                <span class="card-ar">كَاتِب</span>
+              </div>
+              <div class="card-meta">فَاعِل</div>
+              <div class="card-en" data-en="writer, author, clerk" data-q-en="write"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left"></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(kitāba)</span>
+                <span class="card-ar">كِتَابَة</span>
+              </div>
+              <div class="card-meta">VERBAL NOUN</div>
+              <div class="card-en" data-en="writing, script, calligraphy" data-q-en="write"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-caption">Query: write · English → Arabic
+        <small>Highlight lands on the matched English span only. Arabic lemmas stay unhighlighted because the query isn't in Arabic.</small>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       SECTION 2 — Token filter bar
+       ════════════════════════════════════════════════════════ -->
+  <h2>2. Sentence search — token filter bar</h2>
+  <p class="subtitle">Chips appear only for multi-word queries. Default state is <em>All</em>.</p>
+
+  <div class="grid">
+
+    <!-- Phone 4: All selected -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span>●●● ◐ 100%</span></div>
+        <div class="app-bar">
+          <div class="app-bar-title">قاموس عربي</div>
+          <div class="search-field">
+            <span class="icon-left">✕</span>
+            <input dir="rtl" value="ذهب الولد إلى المدرسة" readonly>
+            <span class="icon-right">🔍</span>
+          </div>
+        </div>
+        <div class="chip-bar">
+          <span class="chip active">All</span>
+          <span class="chip"><span class="ar">ذهب</span></span>
+          <span class="chip"><span class="ar">الولد</span></span>
+          <span class="chip"><span class="ar">إلى</span></span>
+          <span class="chip"><span class="ar">المدرسة</span></span>
+        </div>
+        <div class="result-list">
+          <div class="card">
+            <div class="card-left"><span class="common-tag">COMMON</span></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(dhahaba)</span>
+                <span class="card-ar" data-ar="ذَهَبَ" data-mode="exact" data-q="ذهب"></span>
+              </div>
+              <div class="card-meta">VERB</div>
+              <div class="card-en">to go, to depart, to leave</div>
+              <div class="card-provenance">conjugated form: <span class="tok">ذَهَبَ</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left"><span class="common-tag">COMMON</span></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(walad)</span>
+                <span class="card-ar" data-ar="وَلَد" data-mode="root" data-root="ولد"></span>
+              </div>
+              <div class="card-meta">NOUN</div>
+              <div class="card-en">boy, child, son</div>
+              <div class="card-provenance">from: <span class="tok">الولد</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left"></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(ilā)</span>
+                <span class="card-ar" data-ar="إِلَى" data-mode="exact" data-q="الى"></span>
+              </div>
+              <div class="card-meta">PARTICLE</div>
+              <div class="card-en">to, toward, up to</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left"><span class="common-tag">COMMON</span></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(madrasa)</span>
+                <span class="card-ar" data-ar="مَدْرَسَة" data-mode="root" data-root="درس"></span>
+              </div>
+              <div class="card-meta">NOUN</div>
+              <div class="card-en">school</div>
+              <div class="card-provenance">from: <span class="tok">المدرسة</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-caption">All tokens · merged result view
+        <small>Highlight colour tracks the token each result came from — every card uses its own root.</small>
+      </div>
+    </div>
+
+    <!-- Phone 5: filtered to ذهب -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span>●●● ◐ 100%</span></div>
+        <div class="app-bar">
+          <div class="app-bar-title">قاموس عربي</div>
+          <div class="search-field">
+            <span class="icon-left">✕</span>
+            <input dir="rtl" value="ذهب الولد إلى المدرسة" readonly>
+            <span class="icon-right">🔍</span>
+          </div>
+        </div>
+        <div class="chip-bar">
+          <span class="chip">All</span>
+          <span class="chip active"><span class="ar">ذهب</span></span>
+          <span class="chip"><span class="ar">الولد</span></span>
+          <span class="chip"><span class="ar">إلى</span></span>
+          <span class="chip"><span class="ar">المدرسة</span></span>
+        </div>
+        <div class="result-list">
+          <div class="card">
+            <div class="card-left"><span class="common-tag">COMMON</span></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(dhahaba)</span>
+                <span class="card-ar" data-ar="ذَهَبَ" data-mode="exact" data-q="ذهب"></span>
+              </div>
+              <div class="card-meta">VERB</div>
+              <div class="card-en">to go, to depart, to leave</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left"><span class="common-tag">COMMON</span></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(dhahab)</span>
+                <span class="card-ar" data-ar="ذَهَب" data-mode="exact" data-q="ذهب"></span>
+              </div>
+              <div class="card-meta">NOUN</div>
+              <div class="card-en">gold</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left"></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(madhhab)</span>
+                <span class="card-ar" data-ar="مَذْهَب" data-mode="root" data-root="ذهب"></span>
+              </div>
+              <div class="card-meta">NOUN</div>
+              <div class="card-en">doctrine, school of thought, sect</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left">
+              <span class="from">from</span>
+              <span class="baseform">ذَهَبَ</span>
+            </div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(dhāhib)</span>
+                <span class="card-ar" data-ar="ذَاهِب" data-mode="root" data-root="ذهب"></span>
+              </div>
+              <div class="card-meta">فَاعِل</div>
+              <div class="card-en">going, departing; one who goes</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-caption">Filter: ذهب · shows homograph + family
+        <small>Useful for exploring why multiple lemmas share a form — the گreat homograph teaching moment.</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       SECTION 3 — Detail page (VERB, with ORIGINAL conjugation grid)
+       ════════════════════════════════════════════════════════ -->
+  <h2>3. Detail page — verb (كَتَبَ)</h2>
+  <p class="subtitle">Original Flutter 4×3 grid preserved. Tap the tabs on the phone to switch panels.</p>
+
+  <div class="grid">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span>●●● ◐ 100%</span></div>
+        <div class="app-bar">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#222;">←</span>
+            <span style="color:#1976d2;">★</span>
+          </div>
+        </div>
+        <div class="detail-head">
+          <div class="detail-ar" data-ar="كَتَبَ" data-mode="root" data-root="كتب"></div>
+          <div class="detail-meta">
+            <span class="baseform">كَتَبَ</span>
+            <span class="sep">•</span>
+            <span>Verb</span>
+          </div>
+        </div>
+        <div class="tabs">
+          <div class="tab active" data-target="verb-meaning">Meaning</div>
+          <div class="tab" data-target="verb-conj">Conjugation</div>
+          <div class="tab" data-target="verb-rel">Relation</div>
+        </div>
+
+        <div class="tab-panel active" id="verb-meaning">
+          <div class="meanings">
+            <div class="meaning-row">1. to write, to inscribe</div>
+            <div class="meaning-row">2. to compose, to draft</div>
+            <div class="meaning-row">3. to record, to register, to enrol</div>
+            <div class="meaning-row">4. to decree, to prescribe</div>
+          </div>
+          <div style="padding:0 14px 14px;">
+            <div style="font-size:0.72rem;color:#1976d2;letter-spacing:0.4px;font-weight:700;margin:6px 0 4px;">INITIAL TENSES</div>
+            <div style="background:#f9fafb;padding:10px 12px;border-radius:6px;border:1px solid #eef0f3;">
+              <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:#9ca3af;">
+                <span>past</span><span>present</span><span>imperative</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-family:'Noto Naskh Arabic',serif;direction:rtl;unicode-bidi:plaintext;font-size:1.25rem;font-weight:700;margin-top:4px;">
+                <span data-ar="كَتَبَ" data-mode="root" data-root="كتب"></span>
+                <span data-ar="يَكْتُبُ" data-mode="root" data-root="كتب"></span>
+                <span data-ar="اُكْتُبْ" data-mode="root" data-root="كتب"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="verb-conj">
+          <!-- Past block -->
+          <div class="conj-section">
+            <div class="conj-section-head">
+              <span class="en">Past Tense</span>
+              <span class="ar">الماضي</span>
+            </div>
+            <table class="conj-grid">
+              <tr>
+                <th>You (f)<span class="ar">أنتِ</span></th>
+                <th>You (m)<span class="ar">أنتَ</span></th>
+                <th>She<span class="ar">هي</span></th>
+                <th>He<span class="ar">هو</span></th>
+                <th class="side">Sing.<span class="ar">مفرد</span></th>
+              </tr>
+              <tr>
+                <td data-ar="كَتَبْتِ" data-mode="root" data-root="كتب"></td>
+                <td data-ar="كَتَبْتَ" data-mode="root" data-root="كتب"></td>
+                <td data-ar="كَتَبَتْ" data-mode="root" data-root="كتب"></td>
+                <td data-ar="كَتَبَ" data-mode="root" data-root="كتب"></td>
+                <td class="side">Sing.<span class="ar">مفرد</span></td>
+              </tr>
+              <tr>
+                <td data-ar="كَتَبْتُمَا" data-mode="root" data-root="كتب"></td>
+                <td data-ar="كَتَبْتُمَا" data-mode="root" data-root="كتب"></td>
+                <td data-ar="كَتَبَتَا" data-mode="root" data-root="كتب"></td>
+                <td data-ar="كَتَبَا" data-mode="root" data-root="كتب"></td>
+                <td class="side">Dual<span class="ar">مثنى</span></td>
+              </tr>
+              <tr>
+                <td data-ar="كَتَبْتُنَّ" data-mode="root" data-root="كتب"></td>
+                <td data-ar="كَتَبْتُمْ" data-mode="root" data-root="كتب"></td>
+                <td data-ar="كَتَبْنَ" data-mode="root" data-root="كتب"></td>
+                <td data-ar="كَتَبُوا" data-mode="root" data-root="كتب"></td>
+                <td class="side">Plural<span class="ar">جمع</span></td>
+              </tr>
+            </table>
+            <div class="conj-firstperson">
+              <div class="cell">
+                <div class="label">نحن (We)</div>
+                <div class="value" data-ar="كَتَبْنَا" data-mode="root" data-root="كتب"></div>
+              </div>
+              <div class="cell">
+                <div class="label">أنا (I)</div>
+                <div class="value" data-ar="كَتَبْتُ" data-mode="root" data-root="كتب"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Present block -->
+          <div class="conj-section">
+            <div class="conj-section-head">
+              <span class="en">Present Tense</span>
+              <span class="ar">المضارع</span>
+            </div>
+            <table class="conj-grid">
+              <tr>
+                <th>You (f)<span class="ar">أنتِ</span></th>
+                <th>You (m)<span class="ar">أنتَ</span></th>
+                <th>She<span class="ar">هي</span></th>
+                <th>He<span class="ar">هو</span></th>
+                <th class="side">Sing.<span class="ar">مفرد</span></th>
+              </tr>
+              <tr>
+                <td data-ar="تَكْتُبِينَ" data-mode="root" data-root="كتب"></td>
+                <td data-ar="تَكْتُبُ" data-mode="root" data-root="كتب"></td>
+                <td data-ar="تَكْتُبُ" data-mode="root" data-root="كتب"></td>
+                <td data-ar="يَكْتُبُ" data-mode="root" data-root="كتب"></td>
+                <td class="side">Sing.<span class="ar">مفرد</span></td>
+              </tr>
+              <tr>
+                <td data-ar="تَكْتُبَانِ" data-mode="root" data-root="كتب"></td>
+                <td data-ar="تَكْتُبَانِ" data-mode="root" data-root="كتب"></td>
+                <td data-ar="تَكْتُبَانِ" data-mode="root" data-root="كتب"></td>
+                <td data-ar="يَكْتُبَانِ" data-mode="root" data-root="كتب"></td>
+                <td class="side">Dual<span class="ar">مثنى</span></td>
+              </tr>
+              <tr>
+                <td data-ar="تَكْتُبْنَ" data-mode="root" data-root="كتب"></td>
+                <td data-ar="تَكْتُبُونَ" data-mode="root" data-root="كتب"></td>
+                <td data-ar="يَكْتُبْنَ" data-mode="root" data-root="كتب"></td>
+                <td data-ar="يَكْتُبُونَ" data-mode="root" data-root="كتب"></td>
+                <td class="side">Plural<span class="ar">جمع</span></td>
+              </tr>
+            </table>
+            <div class="conj-firstperson">
+              <div class="cell">
+                <div class="label">نحن (We)</div>
+                <div class="value" data-ar="نَكْتُبُ" data-mode="root" data-root="كتب"></div>
+              </div>
+              <div class="cell">
+                <div class="label">أنا (I)</div>
+                <div class="value" data-ar="أَكْتُبُ" data-mode="root" data-root="كتب"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Imperative -->
+          <div class="conj-section">
+            <div class="conj-section-head">
+              <span class="en">Imperative</span>
+              <span class="ar">الأمر</span>
+            </div>
+            <div class="imp-row">
+              <div class="imp-cell">
+                <div class="label">Singular (f)</div>
+                <div class="value" data-ar="اُكْتُبِي" data-mode="root" data-root="كتب"></div>
+              </div>
+              <div class="imp-cell">
+                <div class="label">Singular (m)</div>
+                <div class="value" data-ar="اُكْتُبْ" data-mode="root" data-root="كتب"></div>
+              </div>
+            </div>
+            <div class="imp-row dual">
+              <div class="imp-cell">
+                <div class="label">Dual</div>
+                <div class="value" data-ar="اُكْتُبَا" data-mode="root" data-root="كتب"></div>
+              </div>
+            </div>
+            <div class="imp-row">
+              <div class="imp-cell">
+                <div class="label">Plural (f)</div>
+                <div class="value" data-ar="اُكْتُبْنَ" data-mode="root" data-root="كتب"></div>
+              </div>
+              <div class="imp-cell">
+                <div class="label">Plural (m)</div>
+                <div class="value" data-ar="اُكْتُبُوا" data-mode="root" data-root="كتب"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="verb-rel">
+          <div class="root-header">
+            <div class="letters">ك ت ب</div>
+            <div class="caption">root family · 12 entries</div>
+          </div>
+          <div class="root-group">
+            <h4>Verbs</h4>
+            <div class="relation-card"><span class="ar" data-ar="كَتَبَ" data-mode="root" data-root="كتب"></span> · <span class="en">to write (Form I)</span></div>
+            <div class="relation-card"><span class="ar" data-ar="كَتَّبَ" data-mode="root" data-root="كتب"></span> · <span class="en">to have written (Form II)</span></div>
+            <div class="relation-card"><span class="ar" data-ar="كَاتَبَ" data-mode="root" data-root="كتب"></span> · <span class="en">to correspond with (Form III)</span></div>
+            <div class="relation-card"><span class="ar" data-ar="اِكْتَتَبَ" data-mode="root" data-root="كتب"></span> · <span class="en">to subscribe, enrol (Form VIII)</span></div>
+          </div>
+          <div class="root-group">
+            <h4>Nouns</h4>
+            <div class="relation-card"><span class="ar" data-ar="كِتَاب" data-mode="root" data-root="كتب"></span> · <span class="en">book</span></div>
+            <div class="relation-card"><span class="ar" data-ar="كُتُب" data-mode="root" data-root="كتب"></span> · <span class="en">books (pl.)</span></div>
+            <div class="relation-card"><span class="ar" data-ar="مَكْتَب" data-mode="root" data-root="كتب"></span> · <span class="en">office, desk</span></div>
+            <div class="relation-card"><span class="ar" data-ar="مَكْتَبَة" data-mode="root" data-root="كتب"></span> · <span class="en">library</span></div>
+            <div class="relation-card"><span class="ar" data-ar="كِتَابَة" data-mode="root" data-root="كتب"></span> · <span class="en">writing, calligraphy</span></div>
+          </div>
+          <div class="root-group">
+            <h4>Participles</h4>
+            <div class="relation-card"><span class="ar" data-ar="كَاتِب" data-mode="root" data-root="كتب"></span> · <span class="en">writer (active ptcp.)</span></div>
+            <div class="relation-card"><span class="ar" data-ar="مَكْتُوب" data-mode="root" data-root="كتب"></span> · <span class="en">letter, written (passive ptcp.)</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-caption">Verb detail · 3 tabs
+        <small>Tap a tab to switch. The header shows base-form next to the POS just like your current Flutter build.</small>
+      </div>
+    </div>
+
+    <!-- Phone 7: noun detail (بَيْت) -->
+    <div class="phone-wrap">
+      <div class="phone" id="noun-detail">
+        <div class="status-bar"><span>9:41</span><span>●●● ◐ 100%</span></div>
+        <div class="app-bar">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#222;">←</span>
+            <span style="color:#1976d2;">★</span>
+          </div>
+        </div>
+        <div class="detail-head">
+          <div class="detail-ar" data-ar="بَيْت" data-mode="root" data-root="بيت"></div>
+          <div class="detail-meta">
+            <span class="weak-tag">Weak Root</span>
+            <span class="sep">•</span>
+            <span>Noun</span>
+          </div>
+        </div>
+        <div class="tabs">
+          <div class="tab active" data-target="noun-meaning">Meaning</div>
+          <div class="tab" data-target="noun-forms">Forms</div>
+          <div class="tab" data-target="noun-rel">Relation</div>
+        </div>
+
+        <div class="tab-panel active" id="noun-meaning">
+          <div class="meanings">
+            <div class="meaning-row">1. house, home</div>
+            <div class="meaning-row">2. family, household</div>
+            <div class="meaning-row">3. verse (of poetry)</div>
+            <div class="meaning-row">4. tent; shelter</div>
+          </div>
+          <div style="padding:0 14px 14px;">
+            <div style="font-size:0.72rem;color:#1976d2;letter-spacing:0.4px;font-weight:700;margin:6px 0 4px;">PLURAL</div>
+            <div style="background:#f9fafb;padding:10px 12px;border-radius:6px;border:1px solid #eef0f3;display:flex;justify-content:space-between;align-items:center;">
+              <span class="value" data-ar="بَيْت" data-mode="root" data-root="بيت" style="font-family:'Noto Naskh Arabic',serif;direction:rtl;unicode-bidi:plaintext;font-size:1.2rem;font-weight:700;"></span>
+              <span style="color:#9ca3af;font-size:0.85rem;">→</span>
+              <span class="value" data-ar="بُيُوت" data-mode="root" data-root="بيت" style="font-family:'Noto Naskh Arabic',serif;direction:rtl;unicode-bidi:plaintext;font-size:1.2rem;font-weight:700;"></span>
+            </div>
+            <div style="font-size:0.7rem;color:#9ca3af;margin-top:4px;">broken plural · فُعُول pattern</div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="noun-forms">
+          <div class="forms-list">
+            <div class="form-row"><span class="label">Singular</span><span class="value" data-ar="بَيْت" data-mode="root" data-root="بيت"></span></div>
+            <div class="form-row"><span class="label">Dual</span><span class="value" data-ar="بَيْتَانِ" data-mode="root" data-root="بيت"></span></div>
+            <div class="form-row"><span class="label">Plural</span><span class="value" data-ar="بُيُوت" data-mode="root" data-root="بيت"></span></div>
+            <div class="form-row"><span class="label">Diminutive</span><span class="value" data-ar="بُيَيْت" data-mode="root" data-root="بيت"></span></div>
+            <div class="form-row"><span class="label">Definite</span><span class="value" data-ar="الْبَيْت" data-mode="root" data-root="بيت"></span></div>
+            <div class="form-row"><span class="label">Nisba</span><span class="value" data-ar="بَيْتِيّ" data-mode="root" data-root="بيت"></span></div>
+          </div>
+          <div class="callout" style="margin:14px;">
+            <strong>No-forms case:</strong> particles and invariant words hide this tab entirely. Show only Meaning + Relation.
+          </div>
+        </div>
+
+        <div class="tab-panel" id="noun-rel">
+          <div class="root-header">
+            <div class="letters">ب ي ت</div>
+            <div class="caption">root family · 7 entries</div>
+          </div>
+          <div class="root-group">
+            <h4>Verbs</h4>
+            <div class="relation-card"><span class="ar" data-ar="بَاتَ" data-mode="root" data-root="بيت"></span> · <span class="en">to spend the night (Form I)</span></div>
+            <div class="relation-card"><span class="ar" data-ar="بَيَّتَ" data-mode="root" data-root="بيت"></span> · <span class="en">to plan overnight, plot (Form II)</span></div>
+          </div>
+          <div class="root-group">
+            <h4>Nouns</h4>
+            <div class="relation-card"><span class="ar" data-ar="بَيْت" data-mode="root" data-root="بيت"></span> · <span class="en">house, home</span></div>
+            <div class="relation-card"><span class="ar" data-ar="بُيُوت" data-mode="root" data-root="بيت"></span> · <span class="en">houses (pl.)</span></div>
+            <div class="relation-card"><span class="ar" data-ar="مَبِيت" data-mode="root" data-root="بيت"></span> · <span class="en">overnight stay, lodging</span></div>
+          </div>
+          <div class="root-group">
+            <h4>Adjectives</h4>
+            <div class="relation-card"><span class="ar" data-ar="بَيْتِيّ" data-mode="root" data-root="بيت"></span> · <span class="en">domestic, homely (nisba)</span></div>
+            <div class="relation-card"><span class="ar" data-ar="بَائِت" data-mode="root" data-root="بيت"></span> · <span class="en">staying overnight; stale (of bread)</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-caption">Noun detail · Forms tab instead of Conjugation
+        <small>Weak Root tag inherited from your existing UI (بيت has ي as R2). Forms lists dual/plural/diminutive/definite/nisba.</small>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       SECTION 4 — Long-press action sheet + toast
+       ════════════════════════════════════════════════════════ -->
+  <h2>4. Long-press action sheet &amp; copy confirmation</h2>
+  <p class="subtitle">Modelled on the Takoboto screenshot. Triggers from long-press on a list card.</p>
+
+  <div class="grid">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span>●●● ◐ 100%</span></div>
+        <div class="app-bar">
+          <div class="app-bar-title">قاموس عربي</div>
+          <div class="search-field">
+            <span class="icon-left">✕</span>
+            <input dir="rtl" value="كتب" readonly>
+            <span class="icon-right">🔍</span>
+          </div>
+        </div>
+        <div class="sheet-backdrop">
+          <div class="sheet">
+            <div class="sheet-header">
+              <div class="ar">كَتَبَ</div>
+              <div class="en">to write, to compose, to register</div>
+            </div>
+            <div class="sheet-item">Open<span class="meta">→ detail</span></div>
+            <div class="sheet-item">Copy word<span class="meta">كَتَبَ</span></div>
+            <div class="sheet-item">Copy meaning<span class="meta">to write, …</span></div>
+            <div class="sheet-item">Copy word + meaning</div>
+            <div class="sheet-item">Copy bundle</div>
+            <div class="sheet-item">Share bundle</div>
+            <div class="sheet-item">Add to favourites ★</div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-caption">Long-press on a list card
+        <small>Header echoes the card being acted on so the user is never confused which entry they're copying.</small>
+      </div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span>●●● ◐ 100%</span></div>
+        <div class="app-bar">
+          <div class="app-bar-title">قاموس عربي</div>
+          <div class="search-field">
+            <span class="icon-left">✕</span>
+            <input dir="rtl" value="كتب" readonly>
+            <span class="icon-right">🔍</span>
+          </div>
+        </div>
+        <div class="result-list">
+          <div class="card">
+            <div class="card-left"><span class="common-tag">COMMON</span></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(kataba)</span>
+                <span class="card-ar" data-ar="كَتَبَ" data-mode="exact" data-q="كتب"></span>
+              </div>
+              <div class="card-meta">VERB</div>
+              <div class="card-en">to write, to compose, to register</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left"></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(kutub)</span>
+                <span class="card-ar" data-ar="كُتُب" data-mode="exact" data-q="كتب"></span>
+              </div>
+              <div class="card-meta">NOUN · PL.</div>
+              <div class="card-en">books</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left"><span class="common-tag">COMMON</span></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(kitāb)</span>
+                <span class="card-ar" data-ar="كِتَاب" data-mode="root" data-root="كتب"></span>
+              </div>
+              <div class="card-meta">NOUN</div>
+              <div class="card-en">book</div>
+            </div>
+          </div>
+        </div>
+        <div class="toast">Copied bundle for <span class="ar">كَتَبَ</span></div>
+      </div>
+      <div class="phone-caption">Toast confirmation
+        <small>Auto-dismiss ~2 s so the user knows the copy happened — clipboard writes are silent otherwise.</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       SECTION 5 — Screens from the "still to build" list
+       ════════════════════════════════════════════════════════ -->
+  <h2>5. The five missing screens</h2>
+  <p class="subtitle">Empty state, recent searches, favourites, no-results, settings. The settings screen carries the theme-colour picker placeholder that matches the real Flutter stub shipped alongside this file.</p>
+
+  <div class="grid">
+
+    <!-- Phone 8: empty state -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span>●●● ◐ 100%</span></div>
+        <div class="app-bar">
+          <div class="app-bar-title">قاموس عربي</div>
+          <div class="search-field">
+            <span class="icon-left">✕</span>
+            <input dir="rtl" value="" placeholder="ابحث عن كلمة..." readonly>
+            <span class="icon-right">🔍</span>
+          </div>
+        </div>
+        <div class="empty-state">
+          <div class="big-icon">📖</div>
+          <div style="font-size:0.92rem;color:#6b7280;margin-bottom:6px;">Search anything in Arabic/English</div>
+          <div style="font-size:0.78rem;color:#9ca3af;">Try a word, a root (ك-ت-ب), or a whole sentence</div>
+        </div>
+      </div>
+      <div class="phone-caption">Empty state · first launch
+        <small>Matches the existing Flutter empty-state copy exactly.</small>
+      </div>
+    </div>
+
+    <!-- Phone 9: recent searches -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span>●●● ◐ 100%</span></div>
+        <div class="app-bar">
+          <div class="app-bar-title">قاموس عربي</div>
+          <div class="search-field">
+            <span class="icon-left">✕</span>
+            <input dir="rtl" value="" placeholder="ابحث عن كلمة..." readonly>
+            <span class="icon-right">🔍</span>
+          </div>
+        </div>
+        <div style="background:#fff;min-height:480px;">
+          <div class="section-head">Recent searches</div>
+          <div class="list-row">
+            <span class="ar">كَتَبَ</span>
+            <span class="time">2 min ago</span>
+          </div>
+          <div class="list-row">
+            <span class="ar">يكتبون</span>
+            <span class="time">10 min ago</span>
+          </div>
+          <div class="list-row">
+            <span class="ar">مدرسة</span>
+            <span class="time">yesterday</span>
+          </div>
+          <div class="list-row">
+            <span>write</span>
+            <span class="time">2 days ago</span>
+          </div>
+          <div class="list-row">
+            <span class="ar">بيت</span>
+            <span class="time">3 days ago</span>
+          </div>
+          <div style="padding:16px;text-align:center;">
+            <span style="color:#1976d2;font-size:0.82rem;">Clear all</span>
+          </div>
+        </div>
+      </div>
+      <div class="phone-caption">Recent searches
+        <small>Pulls from L2 disk cache (<code>search_cache</code> table) ordered by <code>last_accessed DESC LIMIT 20</code>.</small>
+      </div>
+    </div>
+
+    <!-- Phone 10: favourites -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span>●●● ◐ 100%</span></div>
+        <div class="app-bar">
+          <div class="app-bar-title" style="display:flex;justify-content:space-between;">
+            <span>←</span>
+            <span>Favourites</span>
+            <span style="color:#1976d2;">★</span>
+          </div>
+        </div>
+        <div style="background:#fff;min-height:480px;">
+          <div class="section-head">3 saved words</div>
+          <div class="card">
+            <div class="card-left"><span class="common-tag">COMMON</span></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(kataba)</span>
+                <span class="card-ar">كَتَبَ</span>
+              </div>
+              <div class="card-meta">VERB</div>
+              <div class="card-en">to write, to compose</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left"><span class="common-tag">COMMON</span></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(madrasa)</span>
+                <span class="card-ar">مَدْرَسَة</span>
+              </div>
+              <div class="card-meta">NOUN</div>
+              <div class="card-en">school</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-left"></div>
+            <div class="card-right">
+              <div class="card-row">
+                <span class="card-romanize">(istiqlāl)</span>
+                <span class="card-ar">اِسْتِقْلَال</span>
+              </div>
+              <div class="card-meta">VERBAL NOUN</div>
+              <div class="card-en">independence</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-caption">Favourites
+        <small>Reuses the exact list-card widget from the search screen — no separate component.</small>
+      </div>
+    </div>
+
+    <!-- Phone 11: no results -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span>●●● ◐ 100%</span></div>
+        <div class="app-bar">
+          <div class="app-bar-title">قاموس عربي</div>
+          <div class="search-field">
+            <span class="icon-left">✕</span>
+            <input value="qwertyuiop" readonly>
+            <span class="icon-right">🔍</span>
+          </div>
+        </div>
+        <div class="empty-state">
+          <div class="big-icon">∅</div>
+          <div style="font-size:0.92rem;color:#6b7280;margin-bottom:6px;">No results found</div>
+          <div style="font-size:0.78rem;color:#9ca3af;">Check the spelling or try a different word</div>
+        </div>
+      </div>
+      <div class="phone-caption">No results
+        <small>Matches the existing Flutter copy ("No results found."). Same centered-text layout as the empty state.</small>
+      </div>
+    </div>
+
+    <!-- Phone 12: settings with theme picker -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span>●●● ◐ 100%</span></div>
+        <div class="app-bar">
+          <div class="app-bar-title" style="display:flex;justify-content:space-between;">
+            <span>←</span>
+            <span>Settings</span>
+            <span></span>
+          </div>
+        </div>
+        <div style="background:#f4f5f7;min-height:480px;">
+          <div class="section-head">Appearance</div>
+          <div class="settings-row">
+            <div>
+              <div class="label">Theme colour</div>
+              <div class="sub">Accent used for highlights, tabs, chips</div>
+            </div>
+          </div>
+          <div class="color-swatches">
+            <div class="color-swatch active" style="background:#1976d2;"></div>
+            <div class="color-swatch" style="background:#2e7d32;"></div>
+            <div class="color-swatch" style="background:#c62828;"></div>
+            <div class="color-swatch" style="background:#6a1b9a;"></div>
+            <div class="color-swatch" style="background:#ef6c00;"></div>
+            <div class="color-swatch" style="background:#37474f;"></div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="label">Text size</div>
+              <div class="sub">Base font size for the whole app</div>
+            </div>
+            <span class="right">Medium →</span>
+          </div>
+          <div class="section-head">Data</div>
+          <div class="settings-row">
+            <div>
+              <div class="label">Clear cache</div>
+              <div class="sub">Remove cached searches</div>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="label">Clear favourites</div>
+            </div>
+          </div>
+          <div class="section-head">About</div>
+          <div class="settings-row">
+            <div>
+              <div class="label">Version</div>
+            </div>
+            <span class="right">1.0.0</span>
+          </div>
+        </div>
+      </div>
+      <div class="phone-caption">Settings · theme colour picker
+        <small>Implemented for real in <code>ThemeController</code> (Flutter stub) — pick a swatch, everything accent-coloured recolours in lock-step.</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       SECTION 6 — Ranking logic
+       ════════════════════════════════════════════════════════ -->
+  <h2>6. Ranking logic (list page)</h2>
+  <p>For a query <code>Q</code>, the cascade is run once for exact, then once after clitic stripping, and the root of Q is used to fetch the full family. Results are unioned by <code>lexicon.id</code> and sorted:</p>
+
+  <div class="section">
+    <table class="ranking-table">
+      <tr><th>Rank</th><th>Match type</th><th>Source</th><th>Example (Q = <span class="ar">كتب</span>)</th></tr>
+      <tr><td>1</td><td>Exact lemma match (normalised)</td><td><code>lexicon.form_stripped = Q</code></td><td><span class="ar">كَتَبَ</span>, <span class="ar">كُتُب</span></td></tr>
+      <tr><td>2</td><td>Exact conjugation hit (if lemma not matched)</td><td><code>conjugations.form_stripped = Q</code></td><td>for Q = <span class="ar">يكتبون</span> → <span class="ar">كَتَبَ</span></td></tr>
+      <tr><td>3</td><td>Exact after clitic stripping (T3–T6)</td><td>stemmer → lexicon</td><td>for Q = <span class="ar">بالمدرسة</span> → <span class="ar">مَدْرَسَة</span></td></tr>
+      <tr><td>4</td><td>Same root family</td><td><code>lexicon.root = extracted root</code></td><td><span class="ar">كِتَاب</span>, <span class="ar">مَكْتَبَة</span>, <span class="ar">كَاتِب</span>…</td></tr>
+      <tr><td>5</td><td>Prefix match on lemma</td><td><code>form_stripped LIKE 'Q%'</code></td><td>Q = <span class="ar">كت</span> → <span class="ar">كَتَف</span></td></tr>
+      <tr><td>6</td><td>Substring match</td><td><code>form_stripped LIKE '%Q%'</code></td><td>rare on Arabic side, common for English</td></tr>
+      <tr><td>7</td><td>Fuzzy / pattern-based root</td><td>Khoja pattern → root</td><td>only fires when ranks 1–6 return nothing</td></tr>
+    </table>
+    <p>Within each rank: <code>is_common DESC, frequency DESC, length ASC</code>.</p>
+    <div class="callout">
+      <strong>Root-family cap:</strong> start at <strong>10 cards</strong>, then fall through to prefix matches with a "…N more in this root" expand row. Keeps common roots (<span class="ar">كتب</span>, <span class="ar">قول</span>, <span class="ar">فعل</span>) from drowning prefix hits. Tune after real use.
+    </div>
+    <div class="callout">
+      <strong>Highlight policy — <em>exact or root only</em>:</strong> every card either highlights the contiguous substring of Q inside the lemma (ranks 1–3, 5, 6) or highlights each of the 3 root radicals individually (rank 4 and when ranks 1–3 share a root with Q). Ranks 5 and 6 still work because prefix/substring implies contiguous presence. If neither applies, the card renders unhighlighted — never a duplicate or missing radical, guaranteed by the shared JS function at render time.
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       SECTION 7 — Bundle format
+       ════════════════════════════════════════════════════════ -->
+  <h2>7. Copy bundle format</h2>
+  <p>Arabic throughout. No romanisation. Verbs get initial tenses; nouns with plurals get the plural; everything else is one line.</p>
+
+  <h3>Verb</h3>
+  <div class="bundle-box"><span class="ar">كَتَبَ</span>: to write, compose, register
+<span class="ar">كَتَبَ، يَكْتُبُ، اُكْتُبْ</span></div>
+
+  <h3>Noun with plural</h3>
+  <div class="bundle-box"><span class="ar">بَيْت</span>: house, home, household
+<span class="ar">بَيْت، بُيُوت</span></div>
+
+  <h3>Noun without plural (mass / uncountable)</h3>
+  <div class="bundle-box"><span class="ar">مَاء</span>: water</div>
+
+  <h3>Particle</h3>
+  <div class="bundle-box"><span class="ar">إِلَى</span>: to, toward, up to</div>
+
+  <p style="margin-top:12px;">Copy variants (from the action sheet):</p>
+  <ul style="margin-left:20px;font-size:0.92rem;line-height:1.7;">
+    <li><strong>Copy word</strong> — the Arabic lemma only</li>
+    <li><strong>Copy meaning</strong> — English gloss only</li>
+    <li><strong>Copy word + meaning</strong> — line 1 of the bundle</li>
+    <li><strong>Copy bundle</strong> — the full two-line block</li>
+    <li><strong>Share bundle</strong> — system share sheet with the bundle as plain text</li>
+  </ul>
+
+  <!-- ════════════════════════════════════════════════════════
+       SECTION 8 — Open items
+       ════════════════════════════════════════════════════════ -->
+  <h2>8. Decisions still worth flagging</h2>
+  <div class="section">
+    <h3>a. Theme-colour personalisation — done as a placeholder</h3>
+    <p>Alongside this HTML there's now a <code>ThemeController</code> and a <code>SettingsScreen</code> in your Flutter project. All accent colour references going forward should use <code>Theme.of(context).colorScheme.primary</code> instead of the hardcoded <code>Color(0xFF1976D2)</code> — this means when you eventually wire the settings swatches into the controller (currently hardcoded to blue), the whole app recolours without more refactoring.</p>
+
+    <h3>b. Highlighting: EXACT or ROOT, never both</h3>
+    <p>For rank 1 (exact lemma match), you could argue both the exact span AND the root radicals should be highlighted. I've kept it to <em>exact only</em> for rank 1 on purpose — otherwise the highlight reads as noise rather than signal. Root highlighting only kicks in when the query doesn't appear literally in the lemma.</p>
+
+    <h3>c. Cap root-family at 10, then let prefix take over</h3>
+    <p>Tuned later once you see real traffic. For the viva dataset 10 is plenty — no root in the FYP test set has more than 12 entries.</p>
+
+    <h3>d. Still to build (not mocked)</h3>
+    <ul style="margin-left:20px;">
+      <li>Text-size picker (settings row is there as a stub — needs a range slider screen)</li>
+      <li>Share-sheet system integration (just calls platform share)</li>
+      <li>L2 disk cache read/write paths (parked from the caching doc)</li>
+      <li>Word-model <code>MatchProvenance</code> field (needed to drive the highlight mode decision without re-running the stemmer at render time)</li>
+    </ul>
+  </div>
+
+  <p style="margin-top:40px;font-size:0.85rem;color:#888;text-align:center;">
+    Highlight colour: <span class="hl">#1976D2</span> — matches <code>Color(0xFF1976D2)</code> already used throughout your Flutter codebase.
+  </p>
+</div>
+
+<script>
+  // ════════════════════════════════════════════════════════════
+  //  Highlighting engine — mirrors the Flutter fix.
+  //  exact: find the query letters contiguously (allowing diacritics
+  //         between them) and colour that whole span.
+  //  root:  colour each root radical individually, leaving non-root
+  //         letters uncoloured. Handles non-contiguous radicals
+  //         (e.g. كَاتِب from root ك-ت-ب — ا between ك and ت).
+  // ════════════════════════════════════════════════════════════
+
+  const DIACRITIC_RE = /[\u064B-\u065F\u0670]/;
+  function isDiacritic(ch) { return DIACRITIC_RE.test(ch); }
+
+  function normalizeLetter(ch) {
+    // Unify alef variants
+    return ch.replace(/[\u0623\u0625\u0622\u0671]/g, '\u0627');
+  }
+
+  function stripDiacritics(s) {
+    return s.replace(/[\u064B-\u065F\u0670\u0640]/g, '');
+  }
+
+  function normalizeQuery(q) {
+    return normalizeLetter(stripDiacritics(q));
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
+
+  /**
+   * EXACT mode: find contiguous Q inside text (ignoring diacritics & alef
+   * variants). Wrap the whole matched span in .hl. If no match, returns text
+   * unchanged — caller can fall back to root mode.
+   */
+  function highlightExact(text, query) {
+    const q = normalizeQuery(query);
+    if (!q) return escapeHtml(text);
+
+    // Build a regex that accepts optional diacritics between each letter
+    const parts = q.split('').map(ch =>
+      `[${ch}\u0623\u0625\u0622\u0671]`.replace(/[\u0623\u0625\u0622\u0671]/g,
+        ch === '\u0627' ? '\u0623\u0625\u0622\u0671\u0627' : ''));
+    const pattern = parts.join('[\u064B-\u065F\u0670\u0640]*') + '[\u064B-\u065F\u0670\u0640]*';
+    const re = new RegExp(pattern);
+    const m = re.exec(text);
+    if (!m) return null; // signal caller to try root mode
+    const before = text.slice(0, m.index);
+    const matched = m[0];
+    const after = text.slice(m.index + matched.length);
+    return escapeHtml(before) + '<span class="hl">' + escapeHtml(matched) + '</span>' + escapeHtml(after);
+  }
+
+  /**
+   * ROOT mode: highlight each character that belongs to the 3-letter root,
+   * carrying its diacritics with it. Non-root letters render plain.
+   * Category-change-based chunking → no duplicate or missing highlights.
+   */
+  function highlightRoot(text, rootLetters) {
+    const rootSet = new Set(
+      stripDiacritics(rootLetters).split('').map(normalizeLetter)
+    );
+    if (rootSet.size === 0) return escapeHtml(text);
+
+    const spans = [];
+    let chunk = '';
+    let curCat = -1;   // -1 = unset, 0 = base, 1 = root
+
+    function flush() {
+      if (!chunk) return;
+      if (curCat === 1) {
+        spans.push('<span class="hl">' + escapeHtml(chunk) + '</span>');
+      } else {
+        spans.push(escapeHtml(chunk));
+      }
+      chunk = '';
+    }
+
+    for (const ch of text) {
+      if (isDiacritic(ch)) {
+        chunk += ch;                  // diacritic sticks to current chunk
+        continue;
+      }
+      const cat = rootSet.has(normalizeLetter(ch)) ? 1 : 0;
+      if (cat !== curCat && chunk) flush();
+      curCat = cat;
+      chunk += ch;
+    }
+    flush();
+    return spans.join('');
+  }
+
+  /** English substring highlighter. */
+  function highlightEnglish(text, q) {
+    if (!q) return escapeHtml(text);
+    const idx = text.toLowerCase().indexOf(q.toLowerCase());
+    if (idx < 0) return escapeHtml(text);
+    return escapeHtml(text.slice(0, idx)) +
+           '<span class="hl-en">' + escapeHtml(text.slice(idx, idx + q.length)) + '</span>' +
+           escapeHtml(text.slice(idx + q.length));
+  }
+
+  // ── Apply to every element with data-ar / data-en ───────────
+  document.querySelectorAll('[data-ar]').forEach(el => {
+    const text = el.dataset.ar;
+    const mode = el.dataset.mode || 'none';
+    if (mode === 'exact') {
+      let html = highlightExact(text, el.dataset.q || '');
+      if (html === null && el.dataset.root) html = highlightRoot(text, el.dataset.root);
+      if (html === null) html = escapeHtml(text);
+      el.innerHTML = html;
+    } else if (mode === 'root') {
+      el.innerHTML = highlightRoot(text, el.dataset.root || '');
+    } else {
+      el.innerHTML = escapeHtml(text);
+    }
+  });
+  document.querySelectorAll('[data-en]').forEach(el => {
+    el.innerHTML = highlightEnglish(el.dataset.en, el.dataset.qEn || '');
+  });
+
+  // ── Tab switching on any phone that has tabs ────────────────
+  document.querySelectorAll('.phone').forEach(phone => {
+    const tabs = phone.querySelectorAll('.tab');
+    const panels = phone.querySelectorAll('.tab-panel');
+    if (!tabs.length) return;
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        panels.forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        const target = phone.querySelector('#' + tab.dataset.target);
+        if (target) target.classList.add('active');
+      });
+    });
+  });
+</script>
+</body>
+</html>

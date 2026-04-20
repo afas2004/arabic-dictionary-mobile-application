@@ -6,10 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'package:arabic_dictionary/controllers/theme_controller.dart';
 import 'package:arabic_dictionary/cubits/search_cubit.dart';
 import 'package:arabic_dictionary/models/models.dart';
 import 'package:arabic_dictionary/utils/formatters.dart';
 import 'package:arabic_dictionary/utils/text_highlighter.dart';
+import 'settings_screen.dart';
 import 'word_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -50,6 +52,21 @@ class _SearchScreenState extends State<SearchScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.settings_outlined, color: Colors.grey[700]),
+            tooltip: 'Settings',
+            onPressed: () {
+              final controller = context.read<ThemeController>();
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SettingsScreen(controller: controller),
+                ),
+              );
+            },
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(60.0),
           child: Padding(
@@ -86,7 +103,8 @@ class _SearchScreenState extends State<SearchScreen> {
                     context.read<SearchCubit>().loadInitial();
                   },
                 ),
-                suffixIcon: Icon(Icons.search, color: Color(0xFF1976D2)),
+                suffixIcon: Icon(Icons.search,
+                    color: Theme.of(context).colorScheme.primary),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8.0),
                   borderSide: BorderSide.none,
@@ -237,15 +255,16 @@ class _SearchScreenState extends State<SearchScreen> {
                         text: TextSpan(
                           style: GoogleFonts.notoNaskhArabic(
                               fontSize: 20, fontWeight: FontWeight.bold),
-                          // Arabic: highlight only the characters that were
-                          // actually searched (not the full consonant set).
+                          // Arabic: highlight exact query match when present,
+                          // otherwise fall back to root-letter highlighting so
+                          // conjugated-form queries (يكتبون → كَتَبَ) still
+                          // anchor the user visually. EXACT or ROOT only.
                           // English: no Arabic highlight needed.
                           children: isArabicSearch
-                              ? TextHighlighter.highlightArabicQuery(
+                              ? TextHighlighter.highlightArabicForList(
                                   word.formArabic,
-                                  query
-                                      .replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '')
-                                      .replaceAll(RegExp(r'[\u0623\u0625\u0622\u0671]'), '\u0627'),
+                                  query,
+                                  word.root,
                                   baseColor: Colors.black87)
                               : [
                                   TextSpan(

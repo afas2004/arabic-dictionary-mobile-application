@@ -35,7 +35,8 @@ class WordDetailScreen extends StatelessWidget {
           title: const SizedBox.shrink(),
           actions: [
             IconButton(
-              icon: Icon(Icons.star_border, color: Color(0xFF1976D2)),
+              icon: Icon(Icons.star_border,
+                  color: Theme.of(context).colorScheme.primary),
               onPressed: () {},
             ),
           ],

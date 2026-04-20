@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>UI Mockups — Search & Detail Pages</title>
+<style>
+  :root {
+    --bg: #f3f4f6;
+    --frame: #1f2937;
+    --screen: #ffffff;
+    --ink: #111827;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --tier-strong: #16a34a;     /* T1 / T2  — green   */
+    --tier-stripped: #2563eb;   /* T3 / T4 / T5 / T6 — blue */
+    --tier-fuzzy: #d97706;      /* T7 — amber */
+    --accent: #1976d2;          /* app primary blue */
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 40px 24px; background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: var(--ink); line-height: 1.5;
+  }
+  h1 { margin: 0 0 4px; font-size: 28px; }
+  h2 { font-size: 20px; margin: 48px 0 8px; }
+  h3 { font-size: 15px; margin: 0 0 4px; color: var(--muted); font-weight: 600;
+       text-transform: uppercase; letter-spacing: 0.04em; }
+  .subtitle { color: var(--muted); margin: 0 0 32px; max-width: 720px; }
+  .legend {
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 20px; margin-bottom: 32px;
+    display: flex; gap: 24px; flex-wrap: wrap;
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot.strong { background: var(--tier-strong); }
+  .dot.stripped { background: var(--tier-stripped); }
+  .dot.fuzzy { background: var(--tier-fuzzy); }
+  .ar {
+    font-family: "Amiri", "Scheherazade New", "Noto Naskh Arabic",
+                 "Traditional Arabic", serif;
+    direction: rtl; text-align: right; unicode-bidi: plaintext;
+  }
+
+  /* ─── Phone frame ──────────────────────────────────────────── */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, 320px);
+          gap: 32px; justify-content: start; }
+  .phone {
+    width: 320px; background: var(--frame); border-radius: 32px;
+    padding: 12px; box-shadow: 0 20px 40px -16px rgba(0,0,0,0.2);
+  }
+  .phone-caption {
+    color: var(--muted); font-size: 13px; text-align: center;
+    margin-top: 10px; max-width: 320px;
+  }
+  .phone-caption code { background: #fff; padding: 1px 6px; border-radius: 4px;
+                        font-size: 12px; }
+  .screen {
+    background: var(--screen); border-radius: 24px; overflow: hidden;
+    height: 600px; display: flex; flex-direction: column;
+  }
+  .status-bar {
+    background: var(--accent); color: #fff; padding: 6px 16px;
+    font-size: 11px; display: flex; justify-content: space-between;
+    align-items: center;
+  }
+  .app-bar {
+    background: var(--accent); color: #fff; padding: 12px 16px 14px;
+  }
+  .app-title { font-size: 17px; font-weight: 600; margin: 0 0 10px; }
+  .search-input {
+    background: rgba(255,255,255,0.92); color: var(--ink);
+    border-radius: 8px; padding: 8px 12px; font-size: 15px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .search-input .icon { color: var(--muted); }
+  .search-input .query { flex: 1; }
+  .search-input .query.ar { font-size: 17px; }
+  .list { flex: 1; overflow-y: auto; }
+
+  /* ─── Result card (list page) ──────────────────────────────── */
+  .card {
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .card-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 12px;
+  }
+  .word.ar { font-size: 26px; font-weight: 600; line-height: 1.2; }
+  .gloss { color: var(--muted); font-size: 14px; }
+  .tier-note { font-size: 12px; font-weight: 500; }
+  .tier-note.strong { color: var(--tier-strong); }
+  .tier-note.stripped { color: var(--tier-stripped); }
+  .tier-note.fuzzy { color: var(--tier-fuzzy); }
+  .tier-note .ar { font-size: 13px; margin-left: 2px; }
+  .card.secondary {
+    background: #fafbfc; padding: 10px 16px;
+  }
+  .card.secondary .word.ar { font-size: 18px; font-weight: 500; }
+  .card.secondary .gloss { font-size: 13px; }
+
+  /* ─── Detail page ─────────────────────────────────────────── */
+  .detail-head {
+    padding: 20px 16px 12px; display: flex; flex-direction: column; gap: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .detail-head .word.ar { font-size: 38px; line-height: 1.1; }
+  .detail-head .translit { color: var(--muted); font-size: 13px;
+                           font-style: italic; }
+  .detail-head .pos { display: inline-block; background: #eff6ff;
+                      color: var(--accent); padding: 2px 8px;
+                      border-radius: 4px; font-size: 12px; font-weight: 500;
+                      width: fit-content; }
+  .tabs {
+    display: flex; background: #fff; border-bottom: 2px solid var(--border);
+  }
+  .tab {
+    flex: 1; text-align: center; padding: 12px 0; font-size: 14px;
+    color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent;
+    margin-bottom: -2px; font-weight: 500;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-body { flex: 1; overflow-y: auto; padding: 16px; display: none; }
+  .tab-body.active { display: block; }
+
+  /* Meaning tab */
+  .meaning-line { margin: 0 0 10px; font-size: 15px; display: flex; gap: 10px; }
+  .meaning-line .n { color: var(--muted); font-weight: 600; min-width: 16px; }
+  .detail-section-title {
+    font-size: 11px; color: var(--muted); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.06em; margin: 20px 0 6px;
+  }
+  .detail-section-title:first-child { margin-top: 0; }
+  .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { background: #f3f4f6; padding: 4px 10px; border-radius: 999px;
+          font-size: 12px; color: var(--ink); }
+  .chip.ar { font-size: 14px; padding: 2px 10px; }
+
+  /* Forms tab */
+  table.paradigm {
+    width: 100%; border-collapse: collapse; font-size: 14px;
+  }
+  .paradigm th {
+    background: #f9fafb; padding: 8px; text-align: center; font-weight: 600;
+    color: var(--muted); font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.04em; border-bottom: 1px solid var(--border);
+  }
+  .paradigm td {
+    padding: 8px; border-bottom: 1px solid var(--border);
+  }
+  .paradigm td.ar { font-size: 17px; text-align: right; }
+  .paradigm td.person { color: var(--muted); font-size: 12px; }
+  .paradigm tr.highlight { background: #fef3c7; }
+  .paradigm tr.highlight td.ar { font-weight: 600; }
+
+  /* Root tab */
+  .root-link {
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 12px;
+  }
+  .root-link .ar { font-size: 20px; font-weight: 500; }
+  .root-link .eng { color: var(--muted); font-size: 13px; }
+  .root-chip {
+    background: #eff6ff; color: var(--accent);
+    padding: 4px 10px; border-radius: 999px; font-size: 13px;
+    font-weight: 500; width: fit-content;
+    margin-bottom: 12px;
+  }
+
+  /* ─── Section dividers ─────────────────────────────────────── */
+  .note {
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 20px; font-size: 14px; line-height: 1.6; max-width: 800px;
+  }
+  .note p { margin: 0 0 8px; }
+  .note p:last-child { margin-bottom: 0; }
+
+  /* Tab demo (interactive) */
+  .tab-demo .tab { user-select: none; }
+</style>
+</head>
+<body>
+
+<h1>UI mockups — search & detail</h1>
+<p class="subtitle">
+  Each phone below shows what a beginner user sees for a different kind of
+  input. Tier information is conveyed by a single short line of coloured text —
+  no card borders, no badges. The list page stays sparse; depth lives on the
+  detail page behind three tabs.
+</p>
+
+<div class="legend">
+  <div class="legend-item">
+    <span class="dot strong"></span>
+    <span>Green text: direct or conjugation match (strong)</span>
+  </div>
+  <div class="legend-item">
+    <span class="dot stripped"></span>
+    <span>Blue text: clitics were stripped (still reliable)</span>
+  </div>
+  <div class="legend-item">
+    <span class="dot fuzzy"></span>
+    <span>Amber text: root-based guess (lower confidence)</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SECTION 1 — List page: five query types
+     ═══════════════════════════════════════════════════════════ -->
+
+<h2>List page — one mockup per query type</h2>
+<p class="subtitle" style="margin-bottom: 24px">
+  Every screen shows only the matched word, a one-line English gloss, and a
+  small coloured sub-line explaining how the match was found. Everything else
+  (examples, full conjugation paradigm, related roots) lives on the detail
+  page.
+</p>
+
+<div class="grid">
+
+  <!-- ── Case 1 — direct T1 with homograph siblings ─────────── -->
+  <div>
+    <div class="phone"><div class="screen">
+      <div class="status-bar"><span>9:41</span><span>100%</span></div>
+      <div class="app-bar">
+        <div class="app-title">Arabic Dictionary</div>
+        <div class="search-input">
+          <span class="icon">🔍</span>
+          <span class="query ar">بيت</span>
+        </div>
+      </div>
+      <div class="list">
+
+        <div class="card">
+          <div class="card-head">
+            <div class="word ar">بَيْت</div>
+            <div class="gloss">house, home</div>
+          </div>
+          <div class="tier-note strong">Direct match</div>
+        </div>
+
+        <div class="card secondary">
+          <div class="card-head">
+            <div class="word ar">بَيَّتَ</div>
+            <div class="gloss">to plan overnight, to contemplate</div>
+          </div>
+        </div>
+
+      </div>
+    </div></div>
+    <p class="phone-caption">
+      User typed <code class="ar">بيت</code> — homograph.
+      Primary noun sits first, rare verb sits beneath as a quiet secondary
+      row. Beginner sees "house" immediately.
+    </p>
+  </div>
+
+  <!-- ── Case 2 — T2 conjugation ────────────────────────────── -->
+  <div>
+    <div class="phone"><div class="screen">
+      <div class="status-bar"><span>9:41</span><span>100%</span></div>
+      <div class="app-bar">
+        <div class="app-title">Arabic Dictionary</div>
+        <div class="search-input">
+          <span class="icon">🔍</span>
+          <span class="query ar">يكتبون</span>
+        </div>
+      </div>
+      <div class="list">
+
+        <div class="card">
+          <div class="card-head">
+            <div class="word ar">كَتَبَ</div>
+            <div class="gloss">to write</div>
+          </div>
+          <div class="tier-note strong">
+            Conjugation of <span class="ar">كَتَبَ</span> · they-write
+            (3rd&nbsp;m. pl. present)
+          </div>
+        </div>
+
+      </div>
+    </div></div>
+    <p class="phone-caption">
+      User typed <code class="ar">يكتبون</code>. Still one-line green —
+      conjugation matches are treated as strong. The short label tells the
+      user which grammatical form they typed.
+    </p>
+  </div>
+
+  <!-- ── Case 3 — T4 clitic strip ───────────────────────────── -->
+  <div>
+    <div class="phone"><div class="screen">
+      <div class="status-bar"><span>9:41</span><span>100%</span></div>
+      <div class="app-bar">
+        <div class="app-title">Arabic Dictionary</div>
+        <div class="search-input">
+          <span class="icon">🔍</span>
+          <span class="query ar">وبالمدرسة</span>
+        </div>
+      </div>
+      <div class="list">
+
+        <div class="card">
+          <div class="card-head">
+            <div class="word ar">مَدْرَسَة</div>
+            <div class="gloss">school</div>
+          </div>
+          <div class="tier-note stripped">
+            Stripped prefixes: <span class="ar">و‎ + ب‎ + ال</span>
+          </div>
+        </div>
+
+      </div>
+    </div></div>
+    <p class="phone-caption">
+      User typed <code class="ar">وبالمدرسة</code>. Blue line explains the
+      decomposition without requiring Arabic grammar knowledge — "we removed
+      these letters to find the core word".
+    </p>
+  </div>
+
+  <!-- ── Case 4 — T5 enclitic ───────────────────────────────── -->
+  <div>
+    <div class="phone"><div class="screen">
+      <div class="status-bar"><span>9:41</span><span>100%</span></div>
+      <div class="app-bar">
+        <div class="app-title">Arabic Dictionary</div>
+        <div class="search-input">
+          <span class="icon">🔍</span>
+          <span class="query ar">كتابه</span>
+        </div>
+      </div>
+      <div class="list">
+
+        <div class="card">
+          <div class="card-head">
+            <div class="word ar">كِتَاب</div>
+            <div class="gloss">book</div>
+          </div>
+          <div class="tier-note stripped">
+            Stripped suffix: <span class="ar">ـه</span> (his)
+          </div>
+        </div>
+
+      </div>
+    </div></div>
+    <p class="phone-caption">
+      User typed <code class="ar">كتابه</code> (his book). Same blue style as
+      prefix-stripping — the user learns clitics through consistent, quiet
+      visual cues.
+    </p>
+  </div>
+
+  <!-- ── Case 5 — T7 fuzzy fallback ─────────────────────────── -->
+  <div>
+    <div class="phone"><div class="screen">
+      <div class="status-bar"><span>9:41</span><span>100%</span></div>
+      <div class="app-bar">
+        <div class="app-title">Arabic Dictionary</div>
+        <div class="search-input">
+          <span class="icon">🔍</span>
+          <span class="query ar">مكاتيب</span>
+        </div>
+      </div>
+      <div class="list">
+
+        <div class="card">
+          <div class="card-head">
+            <div class="word ar">كَتَبَ</div>
+            <div class="gloss">to write</div>
+          </div>
+          <div class="tier-note fuzzy">
+            Root-based guess · root <span class="ar">ك‎ - ت‎ - ب</span>
+          </div>
+        </div>
+
+        <div class="card secondary">
+          <div class="card-head">
+            <div class="word ar">كِتَاب</div>
+            <div class="gloss">book</div>
+          </div>
+        </div>
+
+      </div>
+    </div></div>
+    <p class="phone-caption">
+      Pattern-matched root fallback for a word not in the DB. Amber tells
+      the beginner "this is a best-effort guess — check the detail page".
+      Sibling words sharing the root appear beneath.
+    </p>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SECTION 2 — Detail page: Takoboto-style three tabs
+     ═══════════════════════════════════════════════════════════ -->
+
+<h2>Detail page — three tabs, Takoboto-style</h2>
+<p class="subtitle" style="margin-bottom: 24px">
+  Click the tabs on the phone below to switch views. All the heavy
+  information — meanings, full conjugation paradigm, root family — lives
+  here, not on the list page.
+</p>
+
+<div style="display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap">
+
+  <div>
+    <div class="phone"><div class="screen tab-demo" id="detail">
+      <div class="status-bar"><span>9:41</span><span>100%</span></div>
+
+      <div class="detail-head">
+        <div class="word ar">كَتَبَ</div>
+        <div class="translit">kataba · root ك‎-ت‎-ب</div>
+        <div class="pos">verb · Form I · sound</div>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active" data-target="tab-meaning">Meaning</div>
+        <div class="tab" data-target="tab-forms">Forms</div>
+        <div class="tab" data-target="tab-root">Root</div>
+      </div>
+
+      <!-- Tab 1: Meaning -->
+      <div class="tab-body active" id="tab-meaning">
+        <div class="detail-section-title">Definitions</div>
+        <div class="meaning-line"><span class="n">1.</span>
+          <span>to write, to put into writing</span></div>
+        <div class="meaning-line"><span class="n">2.</span>
+          <span>to compose, to draft (a letter, a book)</span></div>
+        <div class="meaning-line"><span class="n">3.</span>
+          <span>to prescribe, to ordain (formal / religious)</span></div>
+
+        <div class="detail-section-title">Grammatical notes</div>
+        <div class="chip-row">
+          <span class="chip">transitive</span>
+          <span class="chip">Form I</span>
+          <span class="chip">sound verb</span>
+          <span class="chip ar">مصدر: كِتَابَة</span>
+        </div>
+
+        <div class="detail-section-title">Example</div>
+        <div class="ar" style="font-size:18px; line-height:1.7; margin-bottom:4px">
+          كَتَبَ الطَّالِبُ رِسَالَةً إِلَى صَدِيقِهِ.
+        </div>
+        <div style="color:var(--muted); font-size:13px">
+          The student wrote a letter to his friend.
+        </div>
+      </div>
+
+      <!-- Tab 2: Forms -->
+      <div class="tab-body" id="tab-forms">
+        <div class="detail-section-title">Past tense (الماضي)</div>
+        <table class="paradigm">
+          <thead><tr><th>Person</th><th>Form</th></tr></thead>
+          <tbody>
+            <tr><td class="person">he</td>
+                <td class="ar">كَتَبَ</td></tr>
+            <tr><td class="person">she</td>
+                <td class="ar">كَتَبَتْ</td></tr>
+            <tr><td class="person">I</td>
+                <td class="ar">كَتَبْتُ</td></tr>
+            <tr><td class="person">they (m)</td>
+                <td class="ar">كَتَبُوا</td></tr>
+          </tbody>
+        </table>
+
+        <div class="detail-section-title">Present tense (المضارع)</div>
+        <table class="paradigm">
+          <thead><tr><th>Person</th><th>Form</th></tr></thead>
+          <tbody>
+            <tr><td class="person">he</td>
+                <td class="ar">يَكْتُبُ</td></tr>
+            <tr><td class="person">she</td>
+                <td class="ar">تَكْتُبُ</td></tr>
+            <tr class="highlight">
+                <td class="person">they (m)</td>
+                <td class="ar">يَكْتُبُونَ</td></tr>
+            <tr><td class="person">we</td>
+                <td class="ar">نَكْتُبُ</td></tr>
+          </tbody>
+        </table>
+        <div style="color:var(--muted); font-size:12px; margin-top:6px">
+          Highlighted row = the form you searched for.
+        </div>
+
+        <div class="detail-section-title">Imperative (الأمر)</div>
+        <table class="paradigm">
+          <tbody>
+            <tr><td class="person">you (m, sg)</td>
+                <td class="ar">اُكْتُبْ</td></tr>
+            <tr><td class="person">you (f, sg)</td>
+                <td class="ar">اُكْتُبِي</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Tab 3: Root -->
+      <div class="tab-body" id="tab-root">
+        <div class="root-chip ar">ك‎ - ت‎ - ب</div>
+        <div style="color:var(--muted); font-size:13px; margin-bottom:14px">
+          18 words share this root. Tap any to open its page.
+        </div>
+
+        <div class="root-link">
+          <span class="ar">كِتَاب</span>
+          <span class="eng">book</span>
+        </div>
+        <div class="root-link">
+          <span class="ar">كَاتِب</span>
+          <span class="eng">writer, scribe</span>
+        </div>
+        <div class="root-link">
+          <span class="ar">مَكْتَب</span>
+          <span class="eng">desk, office</span>
+        </div>
+        <div class="root-link">
+          <span class="ar">مَكْتَبَة</span>
+          <span class="eng">library, bookshop</span>
+        </div>
+        <div class="root-link">
+          <span class="ar">مَكْتُوب</span>
+          <span class="eng">written; letter</span>
+        </div>
+        <div class="root-link">
+          <span class="ar">كِتَابَة</span>
+          <span class="eng">writing, script</span>
+        </div>
+        <div class="root-link">
+          <span class="ar">اِكْتَتَبَ</span>
+          <span class="eng">to subscribe, to enlist</span>
+        </div>
+      </div>
+
+    </div></div>
+    <p class="phone-caption">
+      Tap the three tabs above. Only one is visible at a time — the list page
+      stays simple, the detail page is where a learner actually studies.
+    </p>
+  </div>
+
+  <div class="note" style="flex: 1; min-width: 320px; max-width: 460px">
+    <p><strong>Why this split works for beginners:</strong></p>
+    <p>
+      The list page never shows more than one Arabic word, one English gloss,
+      and one small sub-line. A user who only reads Arabic without grammar
+      knowledge can scan and tap without being overwhelmed.
+    </p>
+    <p>
+      All the grammar (POS, conjugation tables, root family, examples) is
+      gated behind the detail page's three tabs. A beginner can safely ignore
+      them on day one; a more advanced learner discovers them when they tap
+      through.
+    </p>
+    <p>
+      The three tabs map cleanly to the three questions a dictionary user
+      asks in order: <em>"what does this mean?"</em> →
+      <em>"what shape is this word taking?"</em> →
+      <em>"what are its cousins?"</em>
+    </p>
+    <p>
+      Colour is limited to the tier sub-line only — no coloured card
+      backgrounds, no coloured borders. This keeps the visual noise floor
+      low so the Arabic text itself remains the visual focus.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SECTION 3 — Recap & rules
+     ═══════════════════════════════════════════════════════════ -->
+
+<h2>The rules, restated simply</h2>
+<div class="note">
+  <p><strong>List page (the ifs, flattened):</strong></p>
+  <p>
+    Every result card shows exactly three things — the Arabic lemma, an
+    English gloss, and one small coloured line. That coloured line is
+    green if the match is direct (T1) or a conjugation (T2), blue if any
+    clitics were stripped (T3 through T6), amber if the fallback pattern
+    matcher fired (T7). That's it. No badges. No coloured cards. No
+    multi-line explanations.
+  </p>
+
+  <p><strong>Homographs get a quiet secondary row</strong>, not a popup. If
+  the cascade found more than one strong candidate for the same query, the
+  top result takes the full card; the alternatives appear as compact greyed
+  rows beneath. One-tap access, zero clutter.</p>
+
+  <p><strong>Detail page, three tabs:</strong></p>
+  <p>
+    Tab 1 — <em>Meaning.</em> Definitions, part of speech, one example sentence.
+  </p>
+  <p>
+    Tab 2 — <em>Forms.</em> Full paradigm for verbs (past, present,
+    imperative, passive); declension grid for nouns (singular, dual,
+    plural, construct). The row the user searched for is highlighted.
+  </p>
+  <p>
+    Tab 3 — <em>Root.</em> All lexicon entries sharing the three-letter
+    root, each tappable to navigate sideways through the family.
+  </p>
+
+  <p><strong>Implementation note:</strong> everything above is data the
+  new stemmer already produces. The tier pill's colour is driven by
+  <code>StemResult.source</code>; the clitic line by
+  <code>StemResult.strippedClitics</code>; the root chip and Tab 3 by
+  <code>StemResult.extractedRoot</code> (or the resolved lexicon row's
+  <code>root</code> column for T1 hits). The data pipeline does not
+  change — only the rendering layer does.</p>
+</div>
+
+<script>
+  // Minimal tab switcher so the mockup feels real.
+  document.querySelectorAll('.tab-demo .tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const parent = tab.closest('.tab-demo');
+      parent.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      parent.querySelectorAll('.tab-body').forEach(b => b.classList.remove('active'));
+      tab.classList.add('active');
+      parent.querySelector('#' + tab.dataset.target).classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

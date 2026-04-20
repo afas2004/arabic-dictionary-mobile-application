@@ -33,26 +33,54 @@ class TextHighlighter {
     return spans;
   }
 
-  /// 2. Arabic Diacritic-Agnostic Highlight (NEW FIX)
-  /// Finds unvocalized query (e.g. كتب) inside vocalized text (e.g. كَتَبَ)
-  static List<TextSpan> highlightArabicQuery(String text, String query, {Color baseColor = const Color(0xFF374151)}) {
-    if (query.trim().isEmpty) return [TextSpan(text: text, style: TextStyle(color: baseColor))];
+  /// 2. Arabic Diacritic-Agnostic Highlight
+  /// Finds unvocalized query (e.g. كتب) inside vocalized text (e.g. كَتَبَ).
+  ///
+  /// Normalises both diacritics (U+064B..U+065F, U+0670) and alef variants
+  /// (أإآٱ → ا) so that a bare-alef query matches the hamzated form in the
+  /// result and vice versa. Returns an empty list when no match is found,
+  /// which lets callers decide whether to fall back to root highlighting.
+  static List<TextSpan> highlightArabicQuery(
+    String text,
+    String query, {
+    Color baseColor = const Color(0xFF374151),
+  }) {
+    if (query.trim().isEmpty) {
+      return [TextSpan(text: text, style: TextStyle(color: baseColor))];
+    }
 
-    // Strip diacritics from the search query just in case the user typed them
-    String cleanQuery = query.replaceAll(RegExp(r'[\u064B-\u065F]'), '');
-    if (cleanQuery.isEmpty) return [TextSpan(text: text, style: TextStyle(color: baseColor))];
+    // Strip diacritics + unify alef variants in the query
+    String cleanQuery = query
+        .replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '')
+        .replaceAll(RegExp(r'[\u0623\u0625\u0622\u0671]'), '\u0627');
+    if (cleanQuery.isEmpty) {
+      return [TextSpan(text: text, style: TextStyle(color: baseColor))];
+    }
 
-    // Build a regex that allows optional diacritics between every letter of the query
-    // e.g., 'باع' becomes 'ب[\u064B-\u065F]*ا[\u064B-\u065F]*ع[\u064B-\u065F]*'
-    String regexStr = cleanQuery.split('').join(r'[\u064B-\u065F]*') + r'[\u064B-\u065F]*';
-    RegExp regex = RegExp(regexStr);
+    // Build a regex: between every query letter allow any diacritics,
+    // and for any bare alef also match its hamzated/wasla variants.
+    String letterClass(String ch) {
+      if (ch == '\u0627') return '[\u0627\u0623\u0625\u0622\u0671]';
+      return RegExp.escape(ch);
+    }
 
-    List<TextSpan> spans = [];
+    final String regexStr = cleanQuery
+            .split('')
+            .map(letterClass)
+            .join(r'[\u064B-\u065F\u0670]*') +
+        r'[\u064B-\u065F\u0670]*';
+    final RegExp regex = RegExp(regexStr);
+
+    final List<RegExpMatch> matches = regex.allMatches(text).toList();
+    if (matches.isEmpty) return const [];
+
+    final List<TextSpan> spans = [];
     int start = 0;
-
-    for (final match in regex.allMatches(text)) {
+    for (final match in matches) {
       if (match.start > start) {
-        spans.add(TextSpan(text: text.substring(start, match.start), style: TextStyle(color: baseColor)));
+        spans.add(TextSpan(
+            text: text.substring(start, match.start),
+            style: TextStyle(color: baseColor)));
       }
       spans.add(TextSpan(
         text: match.group(0)!,
@@ -60,11 +88,33 @@ class TextHighlighter {
       ));
       start = match.end;
     }
-
     if (start < text.length) {
-      spans.add(TextSpan(text: text.substring(start), style: TextStyle(color: baseColor)));
+      spans.add(TextSpan(
+          text: text.substring(start), style: TextStyle(color: baseColor)));
     }
     return spans;
+  }
+
+  /// 2a. List-tile smart highlight — "EXACT or ROOT only".
+  ///
+  /// First tries exact diacritic/alef-agnostic substring matching via
+  /// [highlightArabicQuery]. When the query doesn't appear in [text]
+  /// (e.g. user searched the conjugated form `يكتبون` and the tile is
+  /// the lemma `كَتَبَ`), falls back to highlighting the root radicals
+  /// using [highlightRootWithMutations]. This keeps every tile visually
+  /// anchored to either the literal match or the shared root — never a
+  /// partial/misleading highlight.
+  static List<TextSpan> highlightArabicForList(
+    String text,
+    String query,
+    String root, {
+    Color baseColor = const Color(0xFF374151),
+  }) {
+    final exact = highlightArabicQuery(text, query, baseColor: baseColor);
+    if (exact.isNotEmpty) return exact;
+    // Fallback: colour the root radicals. No mutation letters on list tiles —
+    // that red-tier detail is reserved for the conjugation grid.
+    return highlightRootWithMutations(text, root, baseColor: baseColor);
   }
 
   /// 3. Detail Page: Arabic Root Highlight (by root letters)

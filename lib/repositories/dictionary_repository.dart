@@ -23,11 +23,11 @@ class DictionaryRepository {
 
   Future<Database> _initDB() async {
     final Directory documentsDirectory = await getApplicationDocumentsDirectory();
-    final String path = join(documentsDirectory.path, 'arabic_dictionary_v9.db');
+    final String path = join(documentsDirectory.path, 'arabic_dictionary_v11.db');
 
     if (FileSystemEntity.typeSync(path) == FileSystemEntityType.notFound) {
       final ByteData data =
-          await rootBundle.load(join('assets', 'arabic_dictionary_v9.db'));
+          await rootBundle.load(join('assets', 'arabic_dictionary_v11.db'));
       final List<int> bytes =
           data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
       await File(path).writeAsBytes(bytes, flush: true);
@@ -35,9 +35,15 @@ class DictionaryRepository {
 
     final db = await openDatabase(path);
 
-    // Ensure conjugations lookup index exists (idempotent)
+    // Ensure conjugations lookup indexes exist (idempotent).
+    // idx_conj_base is used by ConjugationEngine for the detail-page table.
+    // idx_conj_stripped is used by the Stemmer's T2 form_stripped lookup —
+    // without it that tier degrades from index-seek to full table-scan.
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_conj_base ON conjugations(base_word_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_conj_stripped ON conjugations(form_stripped)',
     );
 
     return db;
@@ -136,6 +142,28 @@ class DictionaryRepository {
     ''', [extractedRoot]);
     return maps.map((m) => Word.fromMap(m)).toList();
   }
+
+  /// Fetch a single lexicon row by its primary key.  Used by the new
+  /// Stemmer — which already resolves an input to a `lexicon.id` — to return
+  /// the full [Word] (with first meaning + parent base form) to SearchManager.
+  Future<Word?> getWordById(int id) async {
+    final db = await database;
+    final maps = await db.rawQuery('''
+      SELECT l.*, m.meaning_text, parent.form_arabic AS base_form_arabic
+      FROM lexicon l
+      LEFT JOIN meanings m ON l.id = m.lexicon_id AND m.order_num = 1
+      LEFT JOIN lexicon parent ON l.base_form_id = parent.id
+      WHERE l.id = ?
+      LIMIT 1
+    ''', [id]);
+    if (maps.isEmpty) return null;
+    return Word.fromMap(maps.first);
+  }
+
+  /// Raw DB handle for callers that need it (notably the new Stemmer, which
+  /// owns its own SQL for the cascade rather than routing through bespoke
+  /// repository methods).
+  Future<Database> get rawDatabase => database;
 
   // ── English lookup queries ────────────────────────────────────────────────────
   //
