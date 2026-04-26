@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 
 class TextHighlighter {
-  static const Color matchColor = Color(0xFF1976D2); 
+  static const Color matchColor = Color(0xFF1976D2);
 
   /// 1. English Substring Highlight
   static List<TextSpan> highlightQuery(String text, String query, {Color baseColor = const Color(0xFF374151)}) {
     if (query.trim().isEmpty) return [TextSpan(text: text, style: TextStyle(color: baseColor))];
-    
+
     final String lowerText = text.toLowerCase();
     final String lowerQuery = query.toLowerCase();
-    
+
     List<TextSpan> spans = [];
     int start = 0;
     int indexOfMatch = lowerText.indexOf(lowerQuery, start);
-    
+
     while (indexOfMatch != -1) {
       if (indexOfMatch > start) {
         spans.add(TextSpan(text: text.substring(start, indexOfMatch), style: TextStyle(color: baseColor)));
@@ -25,11 +25,11 @@ class TextHighlighter {
       start = indexOfMatch + query.length;
       indexOfMatch = lowerText.indexOf(lowerQuery, start);
     }
-    
+
     if (start < text.length) {
       spans.add(TextSpan(text: text.substring(start), style: TextStyle(color: baseColor)));
     }
-    
+
     return spans;
   }
 
@@ -51,8 +51,8 @@ class TextHighlighter {
 
     // Strip diacritics + unify alef variants in the query
     String cleanQuery = query
-        .replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '')
-        .replaceAll(RegExp(r'[\u0623\u0625\u0622\u0671]'), '\u0627');
+        .replaceAll(RegExp(r'[ً-ٰٟ]'), '')
+        .replaceAll(RegExp(r'[أإآٱ]'), 'ا');
     if (cleanQuery.isEmpty) {
       return [TextSpan(text: text, style: TextStyle(color: baseColor))];
     }
@@ -60,15 +60,15 @@ class TextHighlighter {
     // Build a regex: between every query letter allow any diacritics,
     // and for any bare alef also match its hamzated/wasla variants.
     String letterClass(String ch) {
-      if (ch == '\u0627') return '[\u0627\u0623\u0625\u0622\u0671]';
+      if (ch == 'ا') return '[اأإآٱ]';
       return RegExp.escape(ch);
     }
 
     final String regexStr = cleanQuery
             .split('')
             .map(letterClass)
-            .join(r'[\u064B-\u065F\u0670]*') +
-        r'[\u064B-\u065F\u0670]*';
+            .join(r'[ً-ٰٟ]*') +
+        r'[ً-ٰٟ]*';
     final RegExp regex = RegExp(regexStr);
 
     final List<RegExpMatch> matches = regex.allMatches(text).toList();
@@ -123,14 +123,15 @@ class TextHighlighter {
 
     String normalize(String s) => s.replaceAll(RegExp(r'[أإآ]'), 'ا');
     final List<String> rootLetters = root.replaceAll('-', '').split('').map((l) => normalize(l)).toList();
-    
+
     List<TextSpan> spans = [];
     bool wasRoot = false;
     String currentChunk = "";
 
+    // U+064B..U+065F: combining diacritics; U+0670: dagger alef.
     bool isDiacritic(String char) {
       int code = char.codeUnitAt(0);
-      return code >= 0x064B && code <= 0x065F;
+      return (code >= 0x064B && code <= 0x065F) || code == 0x0670;
     }
 
     for (int i = 0; i < word.length; i++) {
@@ -141,7 +142,7 @@ class TextHighlighter {
          bool isRoot = rootLetters.contains(normalize(char));
          if (isRoot != wasRoot && currentChunk.isNotEmpty) {
            spans.add(TextSpan(
-             text: currentChunk, 
+             text: currentChunk,
              style: TextStyle(color: wasRoot ? matchColor : baseColor)
            ));
            currentChunk = "";
@@ -150,7 +151,7 @@ class TextHighlighter {
          currentChunk += char;
       }
     }
-    
+
     if (currentChunk.isNotEmpty) {
        spans.add(TextSpan(text: currentChunk, style: TextStyle(color: wasRoot ? matchColor : baseColor)));
     }
@@ -163,14 +164,30 @@ class TextHighlighter {
   /// Root radicals that appear in a conjugated form are coloured [matchColor]
   /// (blue).  Letters in [mutationLetters] that are NOT root radicals are
   /// coloured [mutationColor] (red) — these are the "changed" letters in weak
-  /// verb forms (e.g. ا replacing hollow R2=و, or ى replacing defective R3=ي).
+  /// verb forms (e.g. ا replacing hollow R2=و).
   /// Every other letter gets [baseColor].
   ///
+  /// ── Position-aware mutation rule ─────────────────────────────────────────
+  /// A non-root letter only counts as a *mutation* when it sits BETWEEN two
+  /// root letters in the surface form.  This stops the imperfect prefix يَ
+  /// and the dual suffix ـَا from being painted red just because ي / ا are
+  /// in the per-verb mutation set.
+  ///
+  /// Examples for قال (root ق-و-ل, mutationLetters = {ا, ي}):
+  ///   قَالَ        → ق(blue) ا(red, between R1+R3) ل(blue)            ✓
+  ///   يَقُولُ       → ي(base, prefix) ق(blue) و(blue) ل(blue)            ✓
+  ///   يَقُولَانِ    → ي(base) ق(blue) و(blue) ل(blue) ا(base) ن(base)   ✓
+  ///   اقُلْ         → ا(base, helping-alef) ق(blue) ل(blue)              ✓
+  ///
+  /// Edge case: a defective ى at word-final (e.g. رَمَى) is left un-painted
+  /// because there's no flanking letter on the right.  Acceptable trade-off:
+  /// the form still reads correctly with R1+R2 in blue and ى in base.
+  ///
   /// Typical [mutationLetters] values:
-  ///   Hollow R2=و  → {'ا', 'ي'}   (ا in past long, ي in present kasra context)
-  ///   Hollow R2=ي  → {'ا'}         (ا in past long only; ي is the root letter)
-  ///   Defective R3 → {'\u0649'}    (ى alef-maqsura)
-  ///   Strong       → {}            (degrades to root-only blue highlighting)
+  ///   Hollow R2=و  → {'ا', 'ي'}   (ا past long, ي present kasra)
+  ///   Hollow R2=ي  → {'ا'}              (ا past long only)
+  ///   Defective R3 → {'ى'}              (ى alef-maqsura)
+  ///   Strong       → {}                       (root-only blue highlighting)
   static List<TextSpan> highlightRootWithMutations(
     String text,
     String root, {
@@ -182,37 +199,65 @@ class TextHighlighter {
       return [TextSpan(text: text, style: TextStyle(color: baseColor))];
     }
 
-    String normalize(String s) => s.replaceAll(RegExp(r'[أإآ]'), 'ا');
+    String normalize(String s) =>
+        s.replaceAll(RegExp(r'[أإآ]'), 'ا');
 
-    // Build the root letter set (no dashes, normalized)
     final rootSet = root
         .replaceAll('-', '')
         .split('')
         .map(normalize)
         .toSet();
 
-    // Mutation set = mutation letters NOT already in rootSet
     final mutSet = mutationLetters
         .map(normalize)
         .where((l) => !rootSet.contains(l))
         .toSet();
 
+    // U+064B..U+065F: combining diacritics; U+0670: dagger alef.
     bool isDiacritic(String char) {
       final code = char.codeUnitAt(0);
-      return code >= 0x064B && code <= 0x065F;
+      return (code >= 0x064B && code <= 0x065F) || code == 0x0670;
     }
 
-    // Categorise: 0 = base, 1 = root (blue), 2 = mutation (red)
-    int category(String char) {
-      final n = normalize(char);
+    // Pass 1: list every non-diacritic letter with its index in [text].
+    // This lets us look at left/right neighbours when deciding whether
+    // a mutation-set letter is a real mutation or just a grammatical
+    // affix (prefix / suffix).
+    final letterIndices = <int>[];
+    final letterChars = <String>[];
+    for (int i = 0; i < text.length; i++) {
+      if (!isDiacritic(text[i])) {
+        letterIndices.add(i);
+        letterChars.add(text[i]);
+      }
+    }
+
+    // Pass 2: identify which text indices are TRUE mutations
+    // (flanked by root letters on BOTH sides).
+    final trueMutationIndices = <int>{};
+    for (int j = 0; j < letterChars.length; j++) {
+      final ch = letterChars[j];
+      final n = normalize(ch);
+      if (!mutSet.contains(n) || rootSet.contains(n)) continue;
+      if (j == 0 || j == letterChars.length - 1) continue;
+      final leftN = normalize(letterChars[j - 1]);
+      final rightN = normalize(letterChars[j + 1]);
+      if (rootSet.contains(leftN) && rootSet.contains(rightN)) {
+        trueMutationIndices.add(letterIndices[j]);
+      }
+    }
+
+    // Categorise per text index: 0 = base, 1 = root (blue), 2 = mutation (red).
+    int category(int textIndex, String ch) {
+      final n = normalize(ch);
       if (rootSet.contains(n)) return 1;
-      if (mutSet.contains(n))  return 2;
+      if (trueMutationIndices.contains(textIndex)) return 2;
       return 0;
     }
 
-    final spans    = <TextSpan>[];
-    int curCat     = -1;
-    String chunk   = '';
+    final spans = <TextSpan>[];
+    int curCat = -1;
+    String chunk = '';
 
     void flush(int cat) {
       if (chunk.isEmpty) return;
@@ -229,7 +274,7 @@ class TextHighlighter {
       if (isDiacritic(char)) {
         chunk += char; // attach diacritic to current chunk
       } else {
-        final cat = category(char);
+        final cat = category(i, char);
         if (cat != curCat && chunk.isNotEmpty) {
           flush(curCat);
         }
@@ -255,11 +300,12 @@ class TextHighlighter {
       return [TextSpan(text: text, style: TextStyle(color: baseColor))];
     }
 
-    String normalize(String s) => s.replaceAll(RegExp(r'[أإآ]'), 'ا');
+    String normalize(String s) =>
+        s.replaceAll(RegExp(r'[أإآ]'), 'ا');
 
     // Strip diacritics from formStripped to get pure consonant set
     final cleanForm =
-        formStripped.replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '');
+        formStripped.replaceAll(RegExp(r'[ً-ٰٟ]'), '');
     final Set<String> consonants =
         cleanForm.split('').map((l) => normalize(l)).toSet();
 
@@ -269,7 +315,7 @@ class TextHighlighter {
 
     bool isDiacritic(String char) {
       final code = char.codeUnitAt(0);
-      return code >= 0x064B && code <= 0x065F;
+      return (code >= 0x064B && code <= 0x065F) || code == 0x0670;
     }
 
     for (int i = 0; i < text.length; i++) {

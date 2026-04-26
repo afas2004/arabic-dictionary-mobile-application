@@ -9,14 +9,19 @@
 //
 // ── Normalisation ─────────────────────────────────────────────────────────────
 //
-//   Every input is normalised with exactly the same pipeline used at build
-//   time by `populate_conjugations.py`:
+//   Input is normalised at runtime as follows:
 //     1. strip diacritics (U+064B..U+065F, U+0670)
 //     2. strip tatweel    (U+0640)
 //     3. unify alef variants (أ إ آ ٱ → ا)
 //
-//   This guarantees that if a form is stored under `form_stripped`, the
-//   runtime's `form_stripped` of the user query will match byte-for-byte.
+//   The build script `populate_conjugations.py` only applies steps 1+2 to
+//   `lexicon.form_stripped` (verified against the v11 DB).  So the column
+//   still contains أ/إ/آ for ~5,400 rows.  We bridge the gap with a
+//   tolerant fallback inside [_lookupLexicon] / [_lookupConjugation] that
+//   flattens both alef variants AND seated hamzas on the column, then
+//   compares to a hamza-stripped user token.  The conjugations table
+//   already had alef-normalisation applied at populate time, but the
+//   tolerant fallback runs there too for symmetry.
 //
 // ── Tier cascade ──────────────────────────────────────────────────────────────
 //
@@ -127,45 +132,39 @@ class Stemmer {
 
   // ── Normalisation constants ────────────────────────────────────────────────
 
-  static final RegExp _diacriticsRegex = RegExp(r'[\u064B-\u065F\u0670]');
-  static final RegExp _tatweelRegex    = RegExp(r'\u0640');
-  static final RegExp _alefVariants    = RegExp(r'[\u0623\u0625\u0622\u0671]');
-  static final RegExp _arabicLetter    = RegExp(r'[\u0600-\u06FF]');
+  static final RegExp _diacriticsRegex = RegExp(r'[ً-ٰٟ]');
+  static final RegExp _tatweelRegex    = RegExp(r'ـ');
+  static final RegExp _alefVariants    = RegExp(r'[أإآٱ]');
+  static final RegExp _arabicLetter    = RegExp(r'[؀-ۿ]');
 
-  /// Strips diacritics + tatweel, unifies alef variants.  Matches
-  /// `populate_conjugations.py::normalize()` byte-for-byte.
+  /// Strips diacritics + tatweel, then unifies alef variants.
   ///
   /// NOTE: hamza-bearing letters (ؤ ئ ء) are deliberately NOT folded here.
   /// Learners typically TYPE the hamza as part of the word, and the DB stores
   /// the canonical with-hamza spelling.  Folding hamza in normalize() would
-  /// throw away that information.  Instead, hamza is handled as a SECONDARY
-  /// retry inside [_lookupLexicon] / [_lookupConjugation] — see [stripHamza].
+  /// throw away that information.  Hamza is handled as a SECONDARY retry
+  /// inside [_lookupLexicon] / [_lookupConjugation] — see [stripHamza].
   static String normalize(String input) {
     var s = input.trim();
     s = s.replaceAll(_diacriticsRegex, '');
     s = s.replaceAll(_tatweelRegex, '');
-    s = s.replaceAll(_alefVariants, '\u0627');
+    s = s.replaceAll(_alefVariants, 'ا');
     return s;
   }
 
   /// Maps seated hamzas to their plain seats and drops bare hamza:
   ///   ؤ (U+0624) → و     ئ (U+0626) → ي     ء (U+0621) → ''
   ///
-  /// Only used as a fallback comparator when a direct form_stripped lookup
-  /// has missed.  Both the user query and the DB column are passed through
-  /// the same transformation so the match works regardless of which side
-  /// happens to carry the hamza.
-  ///
-  /// Worked examples:
+  /// Used in the tolerant SQL fallback so user input and DB column converge
+  /// regardless of which side carries the hamza.  Worked examples:
   ///   user "سوال"  + DB "سؤال"   → both → "سوال"  ✓
   ///   user "سؤال"  + DB "سوال"   → both → "سوال"  ✓
   ///   user "شي"    + DB "شيء"    → both → "شي"    ✓
-  ///   user "مسوول" + DB "مسؤول"  → both → "مسوول" ✓
   static String stripHamza(String input) {
     return input
-        .replaceAll('\u0624', '\u0648') // ؤ → و
-        .replaceAll('\u0626', '\u064A') // ئ → ي
-        .replaceAll('\u0621', '');       // ء → ''
+        .replaceAll('ؤ', 'و') // ؤ → و
+        .replaceAll('ئ', 'ي') // ئ → ي
+        .replaceAll('ء', '');       // ء → ''
   }
 
   // ── Clitic inventories ─────────────────────────────────────────────────────
@@ -343,7 +342,7 @@ class Stemmer {
   ///     because dictionary queries skew heavily toward nominal forms.
   ///   3. Anything else falls to the bottom.
   Future<Map<String, Object?>?> _lookupLexicon(String token) async {
-    // Primary: exact form_stripped match (uses idx_lex_stripped, ~indexed seek).
+    // Primary: exact form_stripped match (uses idx_lex_stripped, indexed seek).
     final rows = await _db.rawQuery(
       '''
       SELECT id, form_arabic, word_type, frequency
@@ -364,21 +363,33 @@ class Stemmer {
     );
     if (rows.isNotEmpty) return rows.first;
 
-    // Hamza-tolerant fallback: only invoked on a primary miss.  Compares both
-    // sides with seated hamzas mapped to their plain seats and bare hamza
-    // dropped, so a learner who typed "سوال" matches a DB row "سؤال" — and
-    // vice versa.  This query cannot use the form_stripped index (REPLACE on
-    // the column forces a scan), but with the cache + tier short-circuit the
-    // amortised cost is one extra ~15-30 ms scan per unique miss.
-    final hamzaless = stripHamza(token);
+    // Tolerant fallback: only invoked on a primary miss.  Flattens both
+    // alef variants AND seated hamzas on the column, then matches against
+    // a hamza-stripped user token.  User input is already alef-flat
+    // because normalize() collapsed أ/إ/آ/ٱ → ا upstream — so the column
+    // is the only side that still has alef variants to flatten.
+    //
+    // This catches three classes of miss against the v11 DB:
+    //   1. أرسل / أطعم / Form IV verbs   — DB keeps أ in form_stripped.
+    //   2. سؤال vs سوال                  — DB and user disagree on hamza seat.
+    //   3. مسؤول vs مسوول vs مسءول       — combined alef + hamza variance.
+    //
+    // The query cannot use idx_lex_stripped (REPLACE on the column forces
+    // a scan), but with the cache + tier short-circuit the amortised cost
+    // is one extra ~15-30 ms scan per unique miss.
+    final flat = stripHamza(token);
     final fbRows = await _db.rawQuery(
       '''
       SELECT id, form_arabic, word_type, frequency
       FROM lexicon
-      WHERE replace(replace(replace(form_stripped,
-                                    '\u0624', '\u0648'),
-                            '\u0626', '\u064A'),
-                    '\u0621', '') = ?
+      WHERE replace(replace(replace(replace(replace(replace(replace(form_stripped,
+                                    'أ', 'ا'),
+                            'إ', 'ا'),
+                    'آ', 'ا'),
+                    'ٱ', 'ا'),
+                    'ؤ', 'و'),
+                    'ئ', 'ي'),
+                    'ء', '') = ?
       ORDER BY
         is_common DESC,
         frequency DESC,
@@ -390,7 +401,7 @@ class Stemmer {
         END
       LIMIT 1
       ''',
-      [hamzaless],
+      [flat],
     );
     return fbRows.isEmpty ? null : fbRows.first;
   }
@@ -419,21 +430,28 @@ class Stemmer {
     );
     if (rows.isNotEmpty) return rows.first;
 
-    // Hamza-tolerant fallback — see [_lookupLexicon] for the rationale.
-    final hamzaless = stripHamza(token);
+    // Tolerant fallback — see [_lookupLexicon] for the rationale.  The
+    // conjugations table was alef-normalised at populate time so the alef
+    // REPLACEs on the column are no-ops there, but we keep them for
+    // defence-in-depth and consistency with the lexicon path.
+    final flat = stripHamza(token);
     final fbRows = await _db.rawQuery(
       '''
       SELECT l.id, l.form_arabic
       FROM conjugations c
       JOIN lexicon l ON l.id = c.base_word_id
-      WHERE replace(replace(replace(c.form_stripped,
-                                    '\u0624', '\u0648'),
-                            '\u0626', '\u064A'),
-                    '\u0621', '') = ?
+      WHERE replace(replace(replace(replace(replace(replace(replace(c.form_stripped,
+                                    'أ', 'ا'),
+                            'إ', 'ا'),
+                    'آ', 'ا'),
+                    'ٱ', 'ا'),
+                    'ؤ', 'و'),
+                    'ئ', 'ي'),
+                    'ء', '') = ?
       ORDER BY l.is_common DESC, l.frequency DESC, c.display_order ASC
       LIMIT 1
       ''',
-      [hamzaless],
+      [flat],
     );
     return fbRows.isEmpty ? null : fbRows.first;
   }

@@ -2,17 +2,19 @@
 //
 // Settings screen per ui_mockups_v2.html §6.
 // Three sections:
-//   • Appearance — theme colour swatches, text size (stub), dark mode
+//   • Appearance — theme colour swatches, text size, dark mode
 //   • Data       — clear recent searches, clear favourites
 //   • About      — version row
 //
 // FavouritesController and RecentSearchesController are optional; when
 // provided, the corresponding "Clear …" rows are interactive. If omitted
 // (e.g. from older callers) the row is still shown but greyed out.
+//
+// Text size is owned by ThemeController.textScale and applied app-wide
+// via a MediaQuery override in main.dart's MaterialApp builder.
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../controllers/favourites_controller.dart';
 import '../controllers/recent_searches_controller.dart';
@@ -35,14 +37,10 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  static const _keyTextSize = 'text_size';
-  double _textSize = 1.0; // 0.85 / 1.0 / 1.15
-
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_onThemeChanged);
-    _loadTextSize();
   }
 
   @override
@@ -53,18 +51,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _onThemeChanged() {
     if (mounted) setState(() {});
-  }
-
-  Future<void> _loadTextSize() async {
-    final prefs = await SharedPreferences.getInstance();
-    final v = prefs.getDouble(_keyTextSize);
-    if (v != null && mounted) setState(() => _textSize = v);
-  }
-
-  Future<void> _setTextSize(double v) async {
-    setState(() => _textSize = v);
-    final prefs = await SharedPreferences.getInstance();
-    prefs.setDouble(_keyTextSize, v);
   }
 
   Future<bool> _confirm(String title, String body, String action) async {
@@ -195,8 +181,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: GoogleFonts.manrope(fontSize: 14)),
               ),
             ],
-            selected: {_textSize},
-            onSelectionChanged: (s) => _setTextSize(s.first),
+            selected: {widget.controller.textScale},
+            onSelectionChanged: (s) =>
+                widget.controller.setTextScale(s.first),
           ),
 
           const SizedBox(height: 8),

@@ -110,6 +110,19 @@ class MyApp extends StatelessWidget {
                 primaryColor: primary,
                 useMaterial3: true,
               ),
+              // Apply the persisted text scale to every screen by wrapping
+              // the navigator in a MediaQuery override.  Reading textScale
+              // from the same ThemeController the AnimatedBuilder watches
+              // means changes in Settings reflow the UI immediately.
+              builder: (context, child) {
+                final mq = MediaQuery.of(context);
+                return MediaQuery(
+                  data: mq.copyWith(
+                    textScaler: TextScaler.linear(themeController.textScale),
+                  ),
+                  child: child ?? const SizedBox.shrink(),
+                );
+              },
               home: SearchScreen(),
             );
           },

@@ -70,22 +70,48 @@ class DictionaryRepository {
   // directArabicLookup — form_stripped prefix/substring + root prefix match.
   // Uses MIN(id) subquery to guarantee deterministic row selection when
   // multiple DB entries share the same (form_stripped, word_type) pair.
+  //
+  // Both the column and the user input are passed through the same alef +
+  // seated-hamza flattening so a query like "اطعم" (no hamza, plain alef)
+  // matches DB rows like "أَطْعَمَ" (form_stripped='أطعم').  Without this
+  // every Form-IV / hamza-prefixed verb scored 0 and fell off the result
+  // list — see the v11 audit notes.
+  //
+  // Performance: `form_stripped LIKE '%xxx%'` is already an unanchored scan
+  // that cannot use idx_lex_stripped, so wrapping it in REPLACE adds no
+  // asymptotic cost.  We keep `root LIKE 'xxx%'` un-flattened so it can
+  // still use idx_lex_root for the prefix branch.
+
+  /// Maps seated hamzas to their plain seats and drops bare hamza.
+  /// Mirrored from Stemmer.stripHamza so the repository stays standalone.
+  String _stripHamza(String input) => input
+      .replaceAll('ؤ', 'و')
+      .replaceAll('ئ', 'ي')
+      .replaceAll('ء', '');
 
   Future<List<Word>> directArabicLookup(String stripped) async {
     final db = await database;
+    // The stemmer's normalize() already collapsed أ/إ/آ/ٱ → ا on the user's
+    // input.  But the user may still have typed a seated hamza (ؤ ئ ء), so
+    // strip those too before comparing against the flattened column.
+    final flat = _stripHamza(stripped);
     final maps = await db.rawQuery('''
       SELECT l2.*, m.meaning_text, parent.form_arabic AS base_form_arabic,
         CASE
-          WHEN l2.form_stripped = ?                  THEN 4
-          WHEN l2.form_stripped LIKE ? || '%'         THEN 3
-          WHEN l2.form_stripped LIKE '%' || ? || '%'  THEN 2
-          WHEN l2.root LIKE ? || '%'                  THEN 1
+          WHEN replace(replace(replace(replace(replace(replace(replace(l2.form_stripped,
+                       'أ','ا'),'إ','ا'),'آ','ا'),'ٱ','ا'),'ؤ','و'),'ئ','ي'),'ء','') = ?                  THEN 4
+          WHEN replace(replace(replace(replace(replace(replace(replace(l2.form_stripped,
+                       'أ','ا'),'إ','ا'),'آ','ا'),'ٱ','ا'),'ؤ','و'),'ئ','ي'),'ء','') LIKE ? || '%'         THEN 3
+          WHEN replace(replace(replace(replace(replace(replace(replace(l2.form_stripped,
+                       'أ','ا'),'إ','ا'),'آ','ا'),'ٱ','ا'),'ؤ','و'),'ئ','ي'),'ء','') LIKE '%' || ? || '%'  THEN 2
+          WHEN l2.root LIKE ? || '%'                                                                       THEN 1
           ELSE 0
         END AS relevance_score
       FROM (
         SELECT MIN(id) AS min_id
         FROM lexicon
-        WHERE form_stripped LIKE '%' || ? || '%'
+        WHERE replace(replace(replace(replace(replace(replace(replace(form_stripped,
+                       'أ','ا'),'إ','ا'),'آ','ا'),'ٱ','ا'),'ؤ','و'),'ئ','ي'),'ء','') LIKE '%' || ? || '%'
            OR root LIKE ? || '%'
         GROUP BY form_stripped, word_type
       ) g
@@ -94,7 +120,7 @@ class DictionaryRepository {
       LEFT JOIN lexicon parent ON l2.base_form_id = parent.id
       ORDER BY relevance_score DESC, l2.is_common DESC, l2.frequency DESC
       LIMIT 50
-    ''', [stripped, stripped, stripped, stripped, stripped, stripped]);
+    ''', [flat, flat, flat, stripped, flat, stripped]);
     return maps.map((m) => Word.fromMap(m)).toList();
   }
 

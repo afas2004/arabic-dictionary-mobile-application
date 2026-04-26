@@ -48,58 +48,96 @@ class WordDetailScreen extends StatelessWidget {
             final isVerb = state.word.wordType == 'base_verb';
             final middleTabLabel = isVerb ? 'Conjugation' : 'Forms';
 
+            // Build the three pieces once, reuse them in both layouts.
+            final header = _buildHeader(context, state.word);
+            final tabBar = Container(
+              color: Theme.of(context).colorScheme.surface,
+              child: TabBar(
+                labelStyle: GoogleFonts.manrope(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+                unselectedLabelStyle: GoogleFonts.manrope(fontSize: 13),
+                labelColor: Theme.of(context).colorScheme.primary,
+                unselectedLabelColor: Colors.grey[500],
+                indicatorColor: Theme.of(context).colorScheme.primary,
+                tabs: [
+                  const Tab(text: 'Meaning'),
+                  Tab(text: middleTabLabel),
+                  const Tab(text: 'Relation'),
+                ],
+              ),
+            );
+            final tabView = TabBarView(
+              children: [
+                _MeaningTab(
+                  word: state.word,
+                  meanings: state.meanings,
+                  conjugationTable: state.conjugationTable,
+                  relatedForms: state.relatedForms,
+                ),
+                isVerb
+                    ? _ConjugationTab(
+                        table: state.conjugationTable,
+                        word: state.word,
+                      )
+                    : _FormsTab(
+                        word: state.word,
+                        relatedForms: state.relatedForms,
+                      ),
+                _RelationTab(
+                  rootFamily: state.rootFamily,
+                  currentWord: state.word,
+                ),
+              ],
+            );
+
             return DefaultTabController(
               length: 3,
               child: Scaffold(
                 backgroundColor: Theme.of(context).scaffoldBackgroundColor,
                 appBar: _buildAppBar(context, state.word),
-                body: Column(
-                  children: [
-                    _buildHeader(context, state.word),
-                    Container(
-                      color: Theme.of(context).colorScheme.surface,
-                      child: TabBar(
-                        labelStyle: GoogleFonts.manrope(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        unselectedLabelStyle: GoogleFonts.manrope(fontSize: 13),
-                        labelColor: Theme.of(context).colorScheme.primary,
-                        unselectedLabelColor: Colors.grey[500],
-                        indicatorColor: Theme.of(context).colorScheme.primary,
-                        tabs: [
-                          const Tab(text: 'Meaning'),
-                          Tab(text: middleTabLabel),
-                          const Tab(text: 'Relation'),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: TabBarView(
+                // Two-pane on wide screens (~landscape phones, tablets)
+                // so the big Arabic header doesn't eat all the vertical
+                // space and the user can keep the lemma in view while
+                // scrolling the tab content.  Phone portrait stays on
+                // the original top-stacked layout.
+                body: LayoutBuilder(
+                  builder: (context, constraints) {
+                    const wideBreakpoint = 700.0;
+                    if (constraints.maxWidth >= wideBreakpoint) {
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _MeaningTab(
-                            word: state.word,
-                            meanings: state.meanings,
-                            conjugationTable: state.conjugationTable,
-                            relatedForms: state.relatedForms,
+                          // Header column — fixed width, full height,
+                          // scrollable in case content overflows on
+                          // a small landscape viewport.
+                          SizedBox(
+                            width: 320,
+                            child: SingleChildScrollView(child: header),
                           ),
-                          isVerb
-                              ? _ConjugationTab(
-                                  table: state.conjugationTable,
-                                  word: state.word,
-                                )
-                              : _FormsTab(
-                                  word: state.word,
-                                  relatedForms: state.relatedForms,
-                                ),
-                          _RelationTab(
-                            rootFamily: state.rootFamily,
-                            currentWord: state.word,
+                          Container(
+                              width: 1,
+                              color: Colors.grey[200]),
+                          Expanded(
+                            child: Column(
+                              children: [
+                                tabBar,
+                                Expanded(child: tabView),
+                              ],
+                            ),
                           ),
                         ],
-                      ),
-                    ),
-                  ],
+                      );
+                    }
+                    return Column(
+                      children: [
+                        header,
+                        tabBar,
+                        Expanded(child: tabView),
+                      ],
+                    );
+                  },
                 ),
               ),
             );
@@ -670,23 +708,42 @@ class _ConjugationTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (table == null || table!.past.isEmpty) {
-      return Center(
-        child: Text(
-          'No conjugation data.',
-          style: GoogleFonts.manrope(color: Colors.grey[400], fontSize: 14),
-        ),
-      );
-    }
+    // For any verb we always render the Past / Present / Imperative
+    // scaffold — even if the conjugation engine returned no rows.  The
+    // empty cells render as "—" via [_findConj], so the user still sees
+    // the structure of the paradigm and can tell which slot is missing,
+    // rather than a blank tab.  This addresses the case where the engine
+    // fails to populate a particular lemma but the verb itself is real.
+    final past = table?.past ?? const <ConjugationRow>[];
+    final present = table?.present ?? const <ConjugationRow>[];
+    final imperative = table?.imperative ?? const <ConjugationRow>[];
+    final everythingEmpty =
+        past.isEmpty && present.isEmpty && imperative.isEmpty;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
       child: Column(
         children: [
-          _buildTenseBlock('Past Tense', 'الماضي', table!.past, word),
+          if (everythingEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Conjugation paradigm not available for this entry — '
+                'showing the empty scaffold for reference.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.manrope(
+                  color: Colors.grey[500],
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          _buildTenseBlock('Past Tense', 'الماضي', past, word),
           const SizedBox(height: 16),
-          _buildTenseBlock('Present Tense', 'المضارع', table!.present, word),
+          _buildTenseBlock('Present Tense', 'المضارع', present, word),
           const SizedBox(height: 16),
-          _buildImperativeBlock(table!.imperative, word),
+          _buildImperativeBlock(imperative, word),
           const SizedBox(height: 48),
         ],
       ),

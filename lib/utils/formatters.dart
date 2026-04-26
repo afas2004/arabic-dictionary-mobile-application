@@ -10,28 +10,65 @@ import '../models/models.dart';
 class Formatters {
   // ── Word type labels ──────────────────────────────────────────────────────
 
-  /// Converts a DB word_type string into a human-readable label.
+  /// Converts a DB word_type string into a short, learner-friendly label.
+  /// For places where we have the room, prefer [formatWordTypeRich] which
+  /// also includes the Arabic grammatical term in parentheses.
   static String formatWordType(String wordType) {
     switch (wordType) {
       case 'base_verb':           return 'Verb';
       case 'verbal_noun':         return 'Verbal Noun';
-      case 'active_participle':   return 'فَاعِل';   // doer / agent
-      case 'passive_participle':  return 'مَفْعُول'; // acted upon
-      case 'intensive_form':      return 'Intensive Form';
+      case 'active_participle':   return 'Active Participle';
+      case 'passive_participle':  return 'Passive Participle';
+      case 'intensive_form':      return 'Intensive';
       case 'singular_noun':       return 'Noun';
       case 'adjective':           return 'Adjective';
-      case 'adjective_sifat':     return 'Adjective';
+      case 'adjective_sifat':     return 'Quality Adjective';
       case 'adjective_mansoub':   return 'Relative Adjective';
       case 'comparative':         return 'Comparative';
+      case 'particle':            return 'Particle';
+      case 'conjunction':         return 'Conjunction';
+      case 'pronoun':             return 'Pronoun';
+      case 'preposition':         return 'Preposition';
       default:                    return wordType;
+    }
+  }
+
+  /// Long-form word_type label including the Arabic grammatical term.
+  /// Used on the word detail header where a single line of secondary info
+  /// has room to spare. e.g. "Verbal Noun · مصدر".
+  ///
+  /// Returns the same value as [formatWordType] for types that have no
+  /// distinct Arabic grammar term (e.g. Pronoun, Conjunction).
+  static String formatWordTypeRich(String wordType) {
+    switch (wordType) {
+      case 'base_verb':           return 'Verb · فعل';
+      case 'verbal_noun':         return 'Verbal Noun · مصدر';
+      case 'active_participle':   return 'Active Participle · اسم الفاعل';
+      case 'passive_participle':  return 'Passive Participle · اسم المفعول';
+      case 'intensive_form':      return 'Intensive · صيغة المبالغة';
+      case 'singular_noun':       return 'Noun · اسم';
+      case 'adjective':           return 'Adjective · صفة';
+      case 'adjective_sifat':     return 'Quality Adjective · صفة مشبهة';
+      case 'adjective_mansoub':   return 'Relative Adjective · نسبة';
+      case 'comparative':         return 'Comparative · اسم التفضيل';
+      case 'particle':            return 'Particle · حرف';
+      case 'conjunction':         return 'Conjunction · حرف عطف';
+      case 'pronoun':             return 'Pronoun · ضمير';
+      case 'preposition':         return 'Preposition · حرف جر';
+      default:                    return formatWordType(wordType);
     }
   }
 
   // ── Verb form label ───────────────────────────────────────────────────────
 
   /// Maps verb_form DB values to display labels.
-  /// Returns null for unrecognized codes (e.g. Buckwalter class codes like
-  /// 'v', 'y', 'x') so the caller can hide the display entirely.
+  ///
+  /// IMPORTANT: in the v11 DB the `verb_form` column contains Hans Wehr /
+  /// Buckwalter conjugation-class codes (`v`, `y`, `x`, `u`, `yz`, …) NOT
+  /// the morphological Form numerals.  This map is therefore effectively
+  /// dead code on the current corpus; the real Form-label source is
+  /// [detectVerbFormLabel] which works off the surface form_stripped.
+  /// Kept for forward-compatibility with future DB schemas.
   static String? formatVerbForm(String? verbForm) {
     if (verbForm == null) return null;
     const Map<String, String> known = {
@@ -46,48 +83,75 @@ class Formatters {
       'IX':   'Form IX',
       'X':    'Form X',
     };
-    return known[verbForm]; // null for unrecognized codes
+    return known[verbForm];
   }
 
   /// Detects verb form from the surface form (formStripped) rather than
-  /// relying on the DB verb_form column, which may contain Buckwalter codes.
+  /// relying on the DB verb_form column, which contains Buckwalter codes.
   /// Returns an Arabic pattern label like "Form: أَفْعَلَ" or null for
   /// Form I / non-verbs.
   static String? detectVerbFormLabel(String formStripped) {
-    // Strip diacritics to work on pure consonants
-    final s = formStripped.replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '');
+    // Strip diacritics + dagger-alef to work on pure consonants.
+    final s = formStripped.replaceAll(RegExp(r'[ً-ٰٟ]'), '');
     if (s.length <= 3) return null; // Form I — no label needed
 
+    // The v11 lexicon's form_stripped column keeps أ / إ / آ at populate
+    // time (only diacritics + tatweel are stripped).  We match the
+    // hamza-bearing variants directly, plus plain alef U+0627 for forward
+    // compatibility with a future DB rebuild that fully alef-normalises
+    // the column.
+    bool isAlef(String c) =>
+        c == 'أ' || // أ  alef-with-hamza-above
+        c == 'إ' || // إ  alef-with-hamza-below
+        c == 'آ' || // آ  alef-with-madda
+        c == 'ٱ' || // ٱ  alef-wasla
+        c == 'ا';   // ا  plain alef
+
     if (s.length == 4) {
-      // form_stripped is alef-normalised by the build script (أ إ آ ٱ → ا),
-      // so Form IV "أَفْعَلَ" arrives here as "افعل" — match plain alef at
-      // position 0.  We accept the hamza-bearing variants too so this works
-      // whether or not the upstream normaliser preserved them.
-      if (s[0] == '\u0627' ||
-          s[0] == '\u0623' ||
-          s[0] == '\u0625' ||
-          s[0] == '\u0622' ||
-          s[0] == '\u0671') {
-        return 'Form: \u0623\u064E\u0641\u0652\u0639\u064E\u0644\u064E';  // أَفْعَلَ (Form IV)
-      }
-      if (s[1] == '\u0627')                      return 'Form: \u0641\u064E\u0627\u0639\u064E\u0644\u064E';        // فَاعَلَ   (Form III)
-      if (s[0] == '\u062A')                      return 'Form: \u062A\u064E\u0641\u064E\u0639\u0651\u064E\u0644\u064E'; // تَفَعَّلَ (Form V)
+      if (isAlef(s[0]))           return 'Form: أَفْعَلَ';        // أَفْعَلَ   (Form IV)
+      if (s[1] == 'ا')       return 'Form: فَاعَلَ';              // فَاعَلَ    (Form III)
+      if (s[0] == 'ت')       return 'Form: تَفَعَّلَ';  // تَفَعَّلَ  (Form V)
       return null;
     }
     if (s.length == 5) {
-      // ا_ت__ — alef at pos 0 + ta at pos 2 → Form VIII
-      if (s[0] == '\u0627' && s[2] == '\u062A') {
-        return 'Form: \u0627\u0641\u0652\u062A\u064E\u0639\u064E\u0644\u064E'; // افْتَعَلَ
+      // ا_ت__ — alef at pos 0 + ta at pos 2 → Form VIII (افْتَعَلَ)
+      if (isAlef(s[0]) && s[2] == 'ت') {
+        return 'Form: افْتَعَلَ';
+      }
+      // ان___ — alef + nun → Form VII (انْفَعَلَ)
+      if (isAlef(s[0]) && s[1] == 'ن') {
+        return 'Form: انْفَعَلَ';
+      }
+      // ت_ا__ — ta + alef at pos 2 → Form VI (تَفَاعَلَ)
+      if (s[0] == 'ت' && s[2] == 'ا') {
+        return 'Form: تَفَاعَلَ';
       }
       return null;
     }
     if (s.length == 6) {
-      // است___ — alef+sin+ta prefix → Form X
-      if (s[0] == '\u0627' && s[1] == '\u0633' && s[2] == '\u062A') {
-        return 'Form: \u0627\u0633\u0652\u062A\u064E\u0641\u0652\u0639\u064E\u0644\u064E'; // اسْتَفْعَلَ
+      // است___ — alef+sin+ta prefix → Form X (اسْتَفْعَلَ)
+      if (isAlef(s[0]) && s[1] == 'س' && s[2] == 'ت') {
+        return 'Form: اسْتَفْعَلَ';
       }
       return null;
     }
+    return null;
+  }
+
+  /// Returns the English meaning category that goes alongside the verb-form
+  /// pattern, e.g. "causative · to make happen" for Form IV.  Useful as a
+  /// secondary line under [detectVerbFormLabel].  Returns null for
+  /// patterns we don't have a stock gloss for.
+  static String? verbFormGloss(String? formLabel) {
+    if (formLabel == null) return null;
+    // formLabel arrives as "Form: <arabic-pattern>"; key off the pattern.
+    if (formLabel.contains('أَف')) return 'causative';                      // Form IV
+    if (formLabel.contains('فَا')) return 'associative';                    // Form III
+    if (formLabel.contains('تَفَعّ')) return 'reflexive of II';   // Form V
+    if (formLabel.contains('تَفَا')) return 'mutual / reflexive of III'; // Form VI
+    if (formLabel.contains('انْف')) return 'passive / reflexive';      // Form VII
+    if (formLabel.contains('افْت')) return 'reflexive of I';           // Form VIII
+    if (formLabel.contains('اسْت')) return 'seek / request';           // Form X
     return null;
   }
 
@@ -147,10 +211,10 @@ class Formatters {
     // regular consonant that receives shadda or stays phonetically stable —
     // conjugates as strong, so don't show "Weak Root" badge.
     final s =
-        word.formStripped.replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '');
+        word.formStripped.replaceAll(RegExp(r'[ً-ٰٟ]'), '');
     if (s.length == 4) {
-      if (s[1] == '\u0627') return false; // Form III: _ا__
-      if (s[0] == '\u062A') return false; // Form V:  ت___
+      if (s[1] == 'ا') return false; // Form III: _ا__
+      if (s[0] == 'ت') return false; // Form V:  ت___
     }
 
     return true;
@@ -159,8 +223,8 @@ class Formatters {
   // ── Meaning display ───────────────────────────────────────────────────────
 
   /// Returns the meaning text ready for display.
-  /// v7 meanings are already clean — no regex stripping needed.
-  /// This method is kept as a pass-through for future use and UI consistency.
+  /// v7+ meanings are already clean — no regex stripping needed.
+  /// Kept as a pass-through so callers don't have to special-case.
   static String cleanMeaning(String meaning) {
     return meaning.trim();
   }

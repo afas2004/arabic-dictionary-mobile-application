@@ -1,16 +1,18 @@
 // lib/controllers/theme_controller.dart
 //
-// Owns the app's primary color and dark-mode flag.
-// Persists both to SharedPreferences so they survive restarts.
-// Exposed via RepositoryProvider in main.dart; consumed by SettingsScreen
-// and via AnimatedBuilder in MyApp.
+// Owns the app's primary color, dark-mode flag, and text scale.
+// Persists all three to SharedPreferences so they survive restarts.
+// Exposed via ChangeNotifierProvider in main.dart; consumed by SettingsScreen
+// directly and via AnimatedBuilder in MyApp (which rebuilds MaterialApp on
+// any change).
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ThemeController extends ChangeNotifier {
-  static const _keyColor = 'theme_primary_color';
-  static const _keyDark  = 'theme_dark_mode';
+  static const _keyColor     = 'theme_primary_color';
+  static const _keyDark      = 'theme_dark_mode';
+  static const _keyTextScale = 'text_size';
 
   static const List<Color> swatches = [
     Color(0xFF1976D2), // Blue (default)
@@ -21,21 +23,33 @@ class ThemeController extends ChangeNotifier {
     Color(0xFF455A64), // Slate
   ];
 
-  Color _primaryColor;
-  bool  _isDark;
+  /// Allowed text-scale values.  Tied to the SegmentedButton in
+  /// SettingsScreen — keep in sync if you add another step.
+  static const List<double> textScales = [0.85, 1.0, 1.15];
+  static const double defaultTextScale = 1.0;
 
-  ThemeController({Color? primaryColor, bool isDark = false})
-      : _primaryColor = primaryColor ?? swatches.first,
-        _isDark = isDark;
+  Color  _primaryColor;
+  bool   _isDark;
+  double _textScale;
 
-  Color get primaryColor => _primaryColor;
-  bool  get isDark       => _isDark;
+  ThemeController({
+    Color? primaryColor,
+    bool isDark = false,
+    double textScale = defaultTextScale,
+  })  : _primaryColor = primaryColor ?? swatches.first,
+        _isDark       = isDark,
+        _textScale    = textScale;
+
+  Color  get primaryColor => _primaryColor;
+  bool   get isDark       => _isDark;
+  double get textScale    => _textScale;
 
   /// Load persisted values from SharedPreferences and return a ready controller.
   static Future<ThemeController> load() async {
     final prefs    = await SharedPreferences.getInstance();
     final colorVal = prefs.getInt(_keyColor);
     final isDark   = prefs.getBool(_keyDark) ?? false;
+    final scale    = prefs.getDouble(_keyTextScale) ?? defaultTextScale;
 
     Color primary = swatches.first;
     if (colorVal != null) {
@@ -44,7 +58,14 @@ class ThemeController extends ChangeNotifier {
         orElse: () => swatches.first,
       );
     }
-    return ThemeController(primaryColor: primary, isDark: isDark);
+    // Defensive: clamp to allowed values so a hand-edited pref can't
+    // produce a wildly oversized UI.
+    final safeScale = textScales.contains(scale) ? scale : defaultTextScale;
+    return ThemeController(
+      primaryColor: primary,
+      isDark: isDark,
+      textScale: safeScale,
+    );
   }
 
   void setPrimaryColor(Color color) async {
@@ -61,5 +82,17 @@ class ThemeController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     prefs.setBool(_keyDark, value);
+  }
+
+  /// Persists [scale] and notifies listeners.  Out-of-range values are
+  /// silently clamped to [defaultTextScale] so we can never produce a
+  /// crash-on-render layout from corrupted prefs.
+  void setTextScale(double scale) async {
+    final safe = textScales.contains(scale) ? scale : defaultTextScale;
+    if (_textScale == safe) return;
+    _textScale = safe;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setDouble(_keyTextScale, safe);
   }
 }

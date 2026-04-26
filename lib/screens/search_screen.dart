@@ -33,7 +33,18 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   bool _isArabicInput = true;
+
+  /// Debounce for the live search itself — short, so results feel snappy.
   Timer? _debounce;
+  static const Duration _searchDebounce = Duration(milliseconds: 300);
+
+  /// Debounce for adding the current query to RecentSearches — much longer,
+  /// so a slow typer doesn't pollute the list with intermediate strings
+  /// like "أ", "أر", "أرس", "أرسل" while typing "أرسل".  We only record
+  /// once the user has settled on a query.
+  Timer? _recentDebounce;
+  static const Duration _recentSearchDebounce = Duration(milliseconds: 1500);
+
   Set<String> _activeFilters = {};
 
   @override
@@ -45,8 +56,21 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _recentDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  /// Records [query] into RecentSearches if it produced results and is
+  /// non-empty.  Called after [_recentSearchDebounce] of inactivity so we
+  /// only capture queries the user has actually settled on.
+  void _maybeRecordRecent(String query) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty || trimmed.length < 2) return;
+    final state = context.read<SearchCubit>().state;
+    if (state is SearchLoaded && state.words.isNotEmpty) {
+      context.read<RecentSearchesController>().add(trimmed);
+    }
   }
 
   List<String> _extractTokens(String query) {
@@ -151,9 +175,16 @@ class _SearchScreenState extends State<SearchScreen> {
                 if (_activeFilters.isNotEmpty) {
                   setState(() => _activeFilters = {});
                 }
+                // Short debounce → run the search.
                 _debounce?.cancel();
-                _debounce = Timer(const Duration(milliseconds: 300), () {
+                _debounce = Timer(_searchDebounce, () {
                   context.read<SearchCubit>().search(val);
+                });
+                // Longer debounce → record into recent searches once the
+                // user has stopped typing.  See [_maybeRecordRecent].
+                _recentDebounce?.cancel();
+                _recentDebounce = Timer(_recentSearchDebounce, () {
+                  _maybeRecordRecent(val);
                 });
               },
               decoration: InputDecoration(
@@ -183,13 +214,10 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ),
       ),
-      body: BlocConsumer<SearchCubit, SearchState>(
-        listener: (context, state) {
-          // Save to recent searches when we get a non-empty result
-          if (state is SearchLoaded && state.query.trim().isNotEmpty) {
-            context.read<RecentSearchesController>().add(state.query);
-          }
-        },
+      body: BlocBuilder<SearchCubit, SearchState>(
+        // Recording into recent searches is debounced via _recentDebounce
+        // (see _maybeRecordRecent) so we don't need a state listener here
+        // — every emit would otherwise pollute the list mid-typing.
         builder: (context, state) {
           if (state is SearchLoading) {
             return const Center(child: CircularProgressIndicator());
