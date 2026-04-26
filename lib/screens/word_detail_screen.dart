@@ -1,11 +1,13 @@
 // lib/screens/word_detail_screen.dart
 //
-// Three-tab detail page: Grammar | Root | Conjugation (verbs) / Forms (non-verbs).
-// The conjugation grid (4×3 + نحن/أنا strip) is preserved exactly as before.
-// The copy icon in the header copies the Arabic headword only (no meaning).
+// Three-tab detail page per ui_mockups_v2.html §3:
+//   Verbs: Meaning | Conjugation | Relation
+//   Non-verbs: Meaning | Forms | Relation
+//
+// The 4×3 conjugation grid (+ نحن/أنا strip) is preserved exactly as before.
+// The AppBar holds only back + star; copy is reached via the action sheet.
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -32,25 +34,25 @@ class WordDetailScreen extends StatelessWidget {
         builder: (context, state) {
           if (state is WordDetailLoading) {
             return Scaffold(
-              appBar: _buildAppBar(context, null, null),
+              appBar: _buildAppBar(context, null),
               body: const Center(child: CircularProgressIndicator()),
             );
           }
           if (state is WordDetailError) {
             return Scaffold(
-              appBar: _buildAppBar(context, null, null),
+              appBar: _buildAppBar(context, null),
               body: Center(child: Text(state.message)),
             );
           }
           if (state is WordDetailLoaded) {
             final isVerb = state.word.wordType == 'base_verb';
-            final thirdTab = isVerb ? 'Conjugation' : 'Forms';
+            final middleTabLabel = isVerb ? 'Conjugation' : 'Forms';
 
             return DefaultTabController(
               length: 3,
               child: Scaffold(
                 backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-                appBar: _buildAppBar(context, state.word, state.conjugationTable),
+                appBar: _buildAppBar(context, state.word),
                 body: Column(
                   children: [
                     _buildHeader(context, state.word),
@@ -66,23 +68,34 @@ class WordDetailScreen extends StatelessWidget {
                         unselectedLabelColor: Colors.grey[500],
                         indicatorColor: Theme.of(context).colorScheme.primary,
                         tabs: [
-                          const Tab(text: 'Grammar'),
-                          const Tab(text: 'Root'),
-                          Tab(text: thirdTab),
+                          const Tab(text: 'Meaning'),
+                          Tab(text: middleTabLabel),
+                          const Tab(text: 'Relation'),
                         ],
                       ),
                     ),
                     Expanded(
                       child: TabBarView(
                         children: [
-                          _GrammarTab(word: state.word, meanings: state.meanings),
-                          _RootTab(rootFamily: state.rootFamily, currentWord: state.word),
+                          _MeaningTab(
+                            word: state.word,
+                            meanings: state.meanings,
+                            conjugationTable: state.conjugationTable,
+                            relatedForms: state.relatedForms,
+                          ),
                           isVerb
                               ? _ConjugationTab(
                                   table: state.conjugationTable,
                                   word: state.word,
                                 )
-                              : _FormsTab(relatedForms: state.relatedForms),
+                              : _FormsTab(
+                                  word: state.word,
+                                  relatedForms: state.relatedForms,
+                                ),
+                          _RelationTab(
+                            rootFamily: state.rootFamily,
+                            currentWord: state.word,
+                          ),
                         ],
                       ),
                     ),
@@ -91,17 +104,13 @@ class WordDetailScreen extends StatelessWidget {
               ),
             );
           }
-          return Scaffold(appBar: _buildAppBar(context, null, null));
+          return Scaffold(appBar: _buildAppBar(context, null));
         },
       ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar(
-    BuildContext context,
-    Word? loadedWord,
-    ConjugationTable? table,
-  ) {
+  PreferredSizeWidget _buildAppBar(BuildContext context, Word? loadedWord) {
     return AppBar(
       backgroundColor: Theme.of(context).colorScheme.surface,
       elevation: 0,
@@ -112,23 +121,7 @@ class WordDetailScreen extends StatelessWidget {
       centerTitle: true,
       title: const SizedBox.shrink(),
       actions: [
-        if (loadedWord != null) ...[
-          // Copy Arabic headword only
-          IconButton(
-            icon: const Icon(Icons.copy_outlined, size: 20),
-            color: Colors.grey[600],
-            tooltip: 'Copy word',
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: loadedWord.formArabic));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Word copied'),
-                  duration: Duration(seconds: 1),
-                ),
-              );
-            },
-          ),
-          // Favourite star
+        if (loadedWord != null)
           AnimatedBuilder(
             animation: context.read<FavouritesController>(),
             builder: (context, _) {
@@ -139,18 +132,18 @@ class WordDetailScreen extends StatelessWidget {
                   isFav ? Icons.star : Icons.star_border,
                   color: Theme.of(context).colorScheme.primary,
                 ),
+                tooltip: isFav ? 'Remove from favourites' : 'Add to favourites',
                 onPressed: () => favs.toggle(loadedWord.id),
               );
             },
           ),
-        ],
       ],
     );
   }
 
   // ── Header (persists across all tabs) ───────────────────────────────────────
 
-  static Set<String> _mutationLetters(Word word) {
+  static Set<String> mutationLettersFor(Word word) {
     final parts = word.root.split('-').where((p) => p.isNotEmpty).toList();
     if (parts.length != 3) return {};
     final r2 = parts[1];
@@ -171,7 +164,7 @@ class WordDetailScreen extends StatelessWidget {
     final bool showRoot = Formatters.shouldDisplayRoot(word);
     final bool isWeak   = Formatters.isWeakRoot(word);
     final triRoot = word.root.split('-').where((p) => p.isNotEmpty).length == 3;
-    final mutations = _mutationLetters(word);
+    final mutations = mutationLettersFor(word);
 
     return Container(
       width: double.infinity,
@@ -261,140 +254,278 @@ class WordDetailScreen extends StatelessWidget {
   }
 }
 
-// ── Grammar tab ──────────────────────────────────────────────────────────────
+// ── Meaning tab ──────────────────────────────────────────────────────────────
+// Numbered gloss list + compact callout:
+//  • verbs → INITIAL TENSES (past / present / imperative 3rd-masc-sing)
+//  • nouns with plural → PLURAL (singular → plural)
 
-class _GrammarTab extends StatelessWidget {
+class _MeaningTab extends StatelessWidget {
   final Word word;
   final List<Meaning> meanings;
+  final ConjugationTable? conjugationTable;
+  final List<Word> relatedForms;
 
-  const _GrammarTab({required this.word, required this.meanings});
+  const _MeaningTab({
+    required this.word,
+    required this.meanings,
+    required this.conjugationTable,
+    required this.relatedForms,
+  });
+
+  static bool _isPlural(Word w) {
+    final t = w.wordType.toLowerCase();
+    if (t.contains('plural')) return true;
+    if ((w.number ?? '').toLowerCase() == 'plural') return true;
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final bool isVerb = word.wordType == 'base_verb';
+    Word? plural;
+    if (!isVerb) {
+      for (final w in relatedForms) {
+        if (_isPlural(w)) {
+          plural = w;
+          break;
+        }
+      }
+    }
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Meanings
-          if (meanings.isEmpty)
-            Text(
-              'No meaning available.',
-              style: GoogleFonts.manrope(fontSize: 14, color: Colors.grey[400]),
-            )
-          else
-            ...meanings.map((m) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    '${m.orderNum}. ${Formatters.cleanMeaning(m.meaningText)}',
-                    style: GoogleFonts.manrope(
-                      fontSize: 15,
-                      color: Colors.black87,
-                      height: 1.5,
-                    ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: meanings.isEmpty
+                ? Text(
+                    'No meaning available.',
+                    style: GoogleFonts.manrope(fontSize: 14, color: Colors.grey[400]),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: meanings
+                        .map((m) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                '${m.orderNum}. ${Formatters.cleanMeaning(m.meaningText)}',
+                                style: GoogleFonts.manrope(
+                                  fontSize: 15,
+                                  color: Colors.black87,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ))
+                        .toList(),
                   ),
-                )),
+          ),
 
-          const SizedBox(height: 20),
-          const Divider(),
-          const SizedBox(height: 12),
-
-          // Grammar metadata
-          _GrammarRow(label: 'Part of speech', value: word.partOfSpeech),
-          _GrammarRow(label: 'Word type', value: Formatters.formatWordType(word.wordType)),
-          if (Formatters.detectVerbFormLabel(word.formStripped) != null)
-            _GrammarRow(
-              label: 'Verb form',
-              value: Formatters.detectVerbFormLabel(word.formStripped)!,
-            ),
-          if (word.voice != null && word.voice!.isNotEmpty)
-            _GrammarRow(label: 'Voice', value: word.voice!),
-          if (word.tense != null && word.tense!.isNotEmpty)
-            _GrammarRow(label: 'Tense', value: word.tense!),
-          if (word.gender != null && word.gender!.isNotEmpty)
-            _GrammarRow(label: 'Gender', value: word.gender!),
-          if (word.domain != null && word.domain!.isNotEmpty)
-            _GrammarRow(label: 'Domain', value: word.domain!),
-          if (word.isCommon)
-            Padding(
-              padding: const EdgeInsets.only(top: 4, bottom: 4),
-              child: Row(
-                children: [
-                  Text(
-                    'Frequency',
-                    style: GoogleFonts.manrope(
-                      fontSize: 13,
-                      color: Colors.grey[500],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.green[50],
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                    child: Text(
-                      'COMMON',
-                      style: GoogleFonts.manrope(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF2E7D32),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          if (isVerb) ...[
+            const SizedBox(height: 10),
+            _InitialTensesCallout(word: word, table: conjugationTable),
+          ] else if (plural != null) ...[
+            const SizedBox(height: 10),
+            _PluralCallout(singular: word, plural: plural),
+          ],
         ],
       ),
     );
   }
 }
 
-class _GrammarRow extends StatelessWidget {
+class _CalloutHeader extends StatelessWidget {
   final String label;
-  final String value;
-
-  const _GrammarRow({required this.label, required this.value});
+  const _CalloutHeader(this.label);
 
   @override
   Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: GoogleFonts.manrope(
+        fontSize: 11,
+        letterSpacing: 0.4,
+        fontWeight: FontWeight.w700,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    );
+  }
+}
+
+class _InitialTensesCallout extends StatelessWidget {
+  final Word word;
+  final ConjugationTable? table;
+
+  const _InitialTensesCallout({required this.word, required this.table});
+
+  String _find(List<ConjugationRow> rows, String p, String n, String g) {
+    try {
+      return rows
+          .firstWhere((r) => r.pronoun == p && r.number == n && r.gender == g)
+          .formArabic;
+    } catch (_) {
+      return '—';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (table == null || table!.past.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final past = _find(table!.past, '3rd', 'singular', 'masculine');
+    final present = _find(table!.present, '3rd', 'singular', 'masculine');
+    final imperative = _find(table!.imperative, '2nd', 'singular', 'masculine');
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 110,
-            child: Text(
-              label,
-              style: GoogleFonts.manrope(fontSize: 13, color: Colors.grey[500]),
+          const _CalloutHeader('INITIAL TENSES'),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF9FAFB),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFFEEF0F3)),
             ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: GoogleFonts.manrope(
-                fontSize: 13,
-                color: Colors.black87,
-                fontWeight: FontWeight.w500,
-              ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _tenseLabel('past'),
+                    _tenseLabel('present'),
+                    _tenseLabel('imperative'),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Directionality(
+                  textDirection: TextDirection.rtl,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _tenseForm(context, past, word),
+                      _tenseForm(context, present, word),
+                      _tenseForm(context, imperative, word),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _tenseLabel(String s) => Text(
+        s,
+        style: GoogleFonts.manrope(fontSize: 11, color: Colors.grey[400]),
+      );
+
+  Widget _tenseForm(BuildContext context, String text, Word word) {
+    final baseStyle = GoogleFonts.notoNaskhArabic(
+      fontSize: 18,
+      fontWeight: FontWeight.bold,
+    );
+    if (text == '—') {
+      return Text(text, style: baseStyle.copyWith(color: Colors.grey[400]));
+    }
+    return RichText(
+      text: TextSpan(
+        style: baseStyle,
+        children: TextHighlighter.highlightRootWithMutations(
+          text,
+          word.root,
+          mutationLetters: WordDetailScreen.mutationLettersFor(word),
+          baseColor: Colors.black87,
+        ),
+      ),
+    );
+  }
 }
 
-// ── Root tab ─────────────────────────────────────────────────────────────────
+class _PluralCallout extends StatelessWidget {
+  final Word singular;
+  final Word plural;
 
-class _RootTab extends StatelessWidget {
+  const _PluralCallout({required this.singular, required this.plural});
+
+  @override
+  Widget build(BuildContext context) {
+    final arStyle = GoogleFonts.notoNaskhArabic(
+      fontSize: 18,
+      fontWeight: FontWeight.bold,
+      color: Colors.black87,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _CalloutHeader('PLURAL'),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF9FAFB),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFFEEF0F3)),
+            ),
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(singular.formArabic, style: arStyle),
+                  Text('→', style: TextStyle(color: Colors.grey[400])),
+                  Text(plural.formArabic, style: arStyle),
+                ],
+              ),
+            ),
+          ),
+          if (plural.wordType.toLowerCase().contains('broken')) ...[
+            const SizedBox(height: 4),
+            Text(
+              'broken plural',
+              style: GoogleFonts.manrope(fontSize: 11, color: Colors.grey[400]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Relation tab ─────────────────────────────────────────────────────────────
+// Root header + family grouped by POS (Verbs / Nouns / Participles / Adjectives / Other).
+
+class _RelationTab extends StatelessWidget {
   final List<Word> rootFamily;
   final Word currentWord;
 
-  const _RootTab({required this.rootFamily, required this.currentWord});
+  const _RelationTab({required this.rootFamily, required this.currentWord});
+
+  static String _groupFor(Word w) {
+    final t = w.wordType.toLowerCase();
+    if (t == 'base_verb') return 'Verbs';
+    if (t.contains('participle')) return 'Participles';
+    if (t.contains('adjective') || t == 'comparative') return 'Adjectives';
+    if (t == 'verbal_noun' ||
+        t.contains('noun') ||
+        t.contains('plural')) {
+      return 'Nouns';
+    }
+    return 'Other';
+  }
+
+  static const _groupOrder = ['Verbs', 'Nouns', 'Participles', 'Adjectives', 'Other'];
 
   @override
   Widget build(BuildContext context) {
@@ -407,101 +538,129 @@ class _RootTab extends StatelessWidget {
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: rootFamily.length,
-      separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey[200]),
-      itemBuilder: (context, i) {
-        final w = rootFamily[i];
-        final isCurrent = w.id == currentWord.id;
-        return InkWell(
-          onTap: isCurrent
-              ? null
-              : () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => WordDetailScreen(word: w),
-                    ),
-                  ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Left: word type + COMMON badge
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      Formatters.formatWordType(w.wordType),
-                      style: GoogleFonts.manrope(
-                        fontSize: 11,
-                        color: isCurrent
-                            ? Theme.of(context).colorScheme.primary
-                            : Colors.grey[500],
-                      ),
-                    ),
-                    if (w.isCommon)
-                      Container(
-                        margin: const EdgeInsets.only(top: 3),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 4, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.green[50],
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                        child: Text(
-                          'COMMON',
-                          style: GoogleFonts.manrope(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF2E7D32),
-                          ),
-                        ),
-                      ),
-                  ],
+    final Map<String, List<Word>> groups = {};
+    for (final w in rootFamily) {
+      groups.putIfAbsent(_groupFor(w), () => []).add(w);
+    }
+
+    final primary = Theme.of(context).colorScheme.primary;
+    final rootLetters = currentWord.root
+        .split('-')
+        .where((p) => p.isNotEmpty)
+        .join(' ');
+
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: [
+        // Root header
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          color: const Color(0xFFF9FAFB),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                rootLetters.isEmpty ? currentWord.root : rootLetters,
+                textDirection: TextDirection.rtl,
+                style: GoogleFonts.notoNaskhArabic(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: primary,
+                  letterSpacing: 2,
                 ),
-                // Right: Arabic word + meaning
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        w.formArabic,
-                        style: GoogleFonts.notoNaskhArabic(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: isCurrent
-                              ? Theme.of(context).colorScheme.primary
-                              : Colors.black87,
-                        ),
-                      ),
-                      if (w.primaryMeaning != null &&
-                          w.primaryMeaning!.isNotEmpty)
-                        Text(
-                          w.primaryMeaning!,
-                          textAlign: TextAlign.right,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.manrope(
-                            fontSize: 13,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                    ],
-                  ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'root family · ${rootFamily.length} entries',
+                style: GoogleFonts.manrope(
+                  fontSize: 12,
+                  color: Colors.grey[500],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        );
-      },
+        ),
+
+        // Grouped sections
+        for (final group in _groupOrder)
+          if (groups[group] != null && groups[group]!.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+              child: Text(
+                group,
+                style: GoogleFonts.manrope(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey[700],
+                ),
+              ),
+            ),
+            for (final w in groups[group]!)
+              _RelationCard(word: w, currentWord: currentWord),
+          ],
+      ],
     );
   }
 }
 
-// ── Conjugation tab ───────────────────────────────────────────────────────────
-// Wraps the existing 4×3 grid exactly as before.
+class _RelationCard extends StatelessWidget {
+  final Word word;
+  final Word currentWord;
+
+  const _RelationCard({required this.word, required this.currentWord});
+
+  @override
+  Widget build(BuildContext context) {
+    final isCurrent = word.id == currentWord.id;
+    final meaning = Formatters.cleanMeaning(word.primaryMeaning ?? '');
+
+    return InkWell(
+      onTap: isCurrent
+          ? null
+          : () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => WordDetailScreen(word: word)),
+              ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              word.formArabic,
+              textDirection: TextDirection.rtl,
+              style: GoogleFonts.notoNaskhArabic(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: isCurrent
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.black87,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text('·', style: TextStyle(color: Colors.grey[400])),
+            ),
+            Expanded(
+              child: Text(
+                meaning,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.manrope(
+                  fontSize: 13,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Conjugation tab (verbs) ──────────────────────────────────────────────────
+// Preserved 4×3 grid + نحن/أنا strip + imperative block exactly as before.
 
 class _ConjugationTab extends StatelessWidget {
   final ConjugationTable? table;
@@ -532,23 +691,6 @@ class _ConjugationTab extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  static Set<String> _mutationLetters(Word word) {
-    final parts = word.root.split('-').where((p) => p.isNotEmpty).toList();
-    if (parts.length != 3) return {};
-    final r2 = parts[1];
-    final r3 = parts[2];
-    const weak = {'\u0648', '\u064A'};
-    if (weak.contains(r2)) {
-      final s = word.formStripped.replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '');
-      final isFormIII = s.length == 4 && s.codeUnitAt(1) == 0x0627;
-      final isFormV   = s.length == 4 && s.codeUnitAt(0) == 0x062A;
-      if (isFormIII || isFormV) return {};
-      return r2 == '\u0648' ? {'\u0627', '\u064A'} : {'\u0627'};
-    }
-    if (weak.contains(r3)) return {'\u0649'};
-    return {};
   }
 
   String _findConj(List<ConjugationRow> rows, String person, String number, String gender) {
@@ -722,7 +864,7 @@ class _ConjugationTab extends StatelessWidget {
                 children: TextHighlighter.highlightRootWithMutations(
                   arabicText,
                   word.root,
-                  mutationLetters: _mutationLetters(word),
+                  mutationLetters: WordDetailScreen.mutationLettersFor(word),
                   baseColor: Colors.black87,
                 ),
               ),
@@ -747,7 +889,7 @@ class _ConjugationTab extends StatelessWidget {
                     children: TextHighlighter.highlightRootWithMutations(
                       arabicText,
                       word.root,
-                      mutationLetters: _mutationLetters(word),
+                      mutationLetters: WordDetailScreen.mutationLettersFor(word),
                       baseColor: Colors.black87,
                     ),
                   ),
@@ -759,66 +901,128 @@ class _ConjugationTab extends StatelessWidget {
 }
 
 // ── Forms tab (non-verbs) ─────────────────────────────────────────────────────
+// Labeled rows per ui_mockups_v2.html §3 phone 7:
+//   Singular / Dual / Plural / Diminutive / Definite / Nisba
+// Each row pulls from relatedForms when available; otherwise the Definite
+// row is computed (ال + singular) and missing ones show "—".
 
 class _FormsTab extends StatelessWidget {
+  final Word word;
   final List<Word> relatedForms;
 
-  const _FormsTab({required this.relatedForms});
+  const _FormsTab({required this.word, required this.relatedForms});
+
+  Word? _findByPredicate(bool Function(Word) pred) {
+    for (final w in relatedForms) {
+      if (pred(w)) return w;
+    }
+    return null;
+  }
+
+  bool _isDual(Word w) {
+    final t = w.wordType.toLowerCase();
+    if (t.contains('dual')) return true;
+    if ((w.number ?? '').toLowerCase() == 'dual') return true;
+    return false;
+  }
+
+  bool _isPlural(Word w) {
+    final t = w.wordType.toLowerCase();
+    if (t.contains('plural')) return true;
+    if ((w.number ?? '').toLowerCase() == 'plural') return true;
+    return false;
+  }
+
+  bool _isDiminutive(Word w) {
+    return w.wordType.toLowerCase().contains('diminutive');
+  }
+
+  bool _isNisba(Word w) {
+    final t = w.wordType.toLowerCase();
+    if (t.contains('nisba') || t == 'adjective_mansoub') return true;
+    // Heuristic: ending in يّ (yeh + shadda)
+    final s = w.formArabic;
+    if (s.endsWith('\u064A\u0651') || s.endsWith('\u064A\u0651\u0629')) {
+      return true;
+    }
+    return false;
+  }
+
+  String _computeDefinite(String singular) {
+    if (singular.startsWith('\u0627\u0644')) return singular;
+    return '\u0627\u0644$singular';
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (relatedForms.isEmpty) {
+    final dual       = _findByPredicate(_isDual);
+    final plural     = _findByPredicate(_isPlural);
+    final diminutive = _findByPredicate(_isDiminutive);
+    final nisba      = _findByPredicate(_isNisba);
+
+    // If nothing to show beyond singular, render a friendly empty-state
+    // rather than a column of "—" rows.
+    final hasAnyForm =
+        dual != null || plural != null || diminutive != null || nisba != null;
+    if (!hasAnyForm) {
       return Center(
-        child: Text(
-          'No additional forms.',
-          style: GoogleFonts.manrope(color: Colors.grey[400], fontSize: 14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Text(
+            'No additional forms recorded for this word.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.manrope(color: Colors.grey[400], fontSize: 14),
+          ),
         ),
       );
     }
 
+    final rows = <_FormRow>[
+      _FormRow('Singular', word.formArabic),
+      _FormRow('Dual', dual?.formArabic),
+      _FormRow('Plural', plural?.formArabic),
+      _FormRow('Diminutive', diminutive?.formArabic),
+      _FormRow('Definite', _computeDefinite(word.formArabic)),
+      _FormRow('Nisba', nisba?.formArabic),
+    ];
+
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: relatedForms.length,
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      itemCount: rows.length,
       separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey[200]),
       itemBuilder: (context, i) {
-        final w = relatedForms[i];
-        return InkWell(
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => WordDetailScreen(word: w)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  Formatters.formatWordType(w.wordType),
-                  style: GoogleFonts.manrope(fontSize: 12, color: Colors.grey[500]),
+        final r = rows[i];
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                r.label,
+                style: GoogleFonts.manrope(
+                  fontSize: 13,
+                  color: Colors.grey[500],
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      w.formArabic,
-                      style: GoogleFonts.notoNaskhArabic(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    if (w.primaryMeaning != null && w.primaryMeaning!.isNotEmpty)
-                      Text(
-                        w.primaryMeaning!,
-                        style: GoogleFonts.manrope(fontSize: 13, color: Colors.grey[600]),
-                      ),
-                  ],
+              ),
+              Text(
+                r.value ?? '—',
+                textDirection: TextDirection.rtl,
+                style: GoogleFonts.notoNaskhArabic(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: r.value == null ? Colors.grey[400] : Colors.black87,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
       },
     );
   }
+}
+
+class _FormRow {
+  final String label;
+  final String? value;
+  const _FormRow(this.label, this.value);
 }

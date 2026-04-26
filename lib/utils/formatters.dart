@@ -59,7 +59,17 @@ class Formatters {
     if (s.length <= 3) return null; // Form I — no label needed
 
     if (s.length == 4) {
-      if (s[0] == '\u0623' || s[0] == '\u0625') return 'Form: \u0623\u064E\u0641\u0652\u0639\u064E\u0644\u064E';  // أَفْعَلَ  (Form IV)
+      // form_stripped is alef-normalised by the build script (أ إ آ ٱ → ا),
+      // so Form IV "أَفْعَلَ" arrives here as "افعل" — match plain alef at
+      // position 0.  We accept the hamza-bearing variants too so this works
+      // whether or not the upstream normaliser preserved them.
+      if (s[0] == '\u0627' ||
+          s[0] == '\u0623' ||
+          s[0] == '\u0625' ||
+          s[0] == '\u0622' ||
+          s[0] == '\u0671') {
+        return 'Form: \u0623\u064E\u0641\u0652\u0639\u064E\u0644\u064E';  // أَفْعَلَ (Form IV)
+      }
       if (s[1] == '\u0627')                      return 'Form: \u0641\u064E\u0627\u0639\u064E\u0644\u064E';        // فَاعَلَ   (Form III)
       if (s[0] == '\u062A')                      return 'Form: \u062A\u064E\u0641\u064E\u0639\u0651\u064E\u0644\u064E'; // تَفَعَّلَ (Form V)
       return null;

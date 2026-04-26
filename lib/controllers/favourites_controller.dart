@@ -33,4 +33,13 @@ class FavouritesController extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     prefs.setStringList(_key, _ids.map((i) => i.toString()).toList());
   }
+
+  /// Remove all favourites. Used by the "Clear favourites" action in Settings.
+  Future<void> clear() async {
+    if (_ids.isEmpty) return;
+    _ids.clear();
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    prefs.remove(_key);
+  }
 }

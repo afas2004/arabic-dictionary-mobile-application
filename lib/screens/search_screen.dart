@@ -1,4 +1,8 @@
 // lib/screens/search_screen.dart
+//
+// Search list per ui_mockups_v2.html §1/2/4/5 phones 1, 2, 4, 8-12.
+// Action sheet follows §4 phone order: Open → Copy word → Copy meaning →
+// Copy word+meaning → Copy bundle → Share bundle → Add to favourites.
 
 import 'dart:async';
 
@@ -6,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'package:arabic_dictionary/controllers/favourites_controller.dart';
 import 'package:arabic_dictionary/controllers/recent_searches_controller.dart';
@@ -115,6 +120,8 @@ class _SearchScreenState extends State<SearchScreen> {
                 MaterialPageRoute(
                   builder: (_) => SettingsScreen(
                     controller: context.read<ThemeController>(),
+                    favourites: context.read<FavouritesController>(),
+                    recentSearches: context.read<RecentSearchesController>(),
                   ),
                 ),
               );
@@ -221,10 +228,11 @@ class _SearchScreenState extends State<SearchScreen> {
                           itemCount: displayed.length,
                           separatorBuilder: (_, __) =>
                               Divider(height: 1, color: Colors.grey[200]),
-                          itemBuilder: (context, index) => _buildWordTile(
-                            context,
-                            displayed[index],
-                            state.query,
+                          itemBuilder: (context, index) => WordTile(
+                            word: displayed[index],
+                            query: state.query,
+                            onLongPress: () =>
+                                _showWordActions(context, displayed[index]),
                           ),
                         ),
                 ),
@@ -240,22 +248,46 @@ class _SearchScreenState extends State<SearchScreen> {
   // ── Empty state ──────────────────────────────────────────────────────────────
 
   Widget _buildEmptyState(BuildContext context) {
-    final recents = context.read<RecentSearchesController>().searches;
-
-    if (recents.isEmpty) {
-      return Center(
-        child: Text(
-          'Search anything in Arabic/English...',
-          style: GoogleFonts.manrope(color: Colors.grey[400], fontSize: 16),
-        ),
-      );
-    }
-
     return AnimatedBuilder(
       animation: context.read<RecentSearchesController>(),
       builder: (context, _) {
         final searches =
             context.read<RecentSearchesController>().searches;
+
+        if (searches.isEmpty) {
+          // First-launch empty state with big icon + two-line copy (mockup phone 8)
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('📖', style: TextStyle(fontSize: 56)),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Search anything in Arabic/English',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.manrope(
+                      fontSize: 15,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Try a word, a root (ك-ت-ب), or a whole sentence',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.manrope(
+                      fontSize: 13,
+                      color: Colors.grey[400],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        // Recent searches list (mockup phone 9)
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -265,7 +297,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Recent',
+                    'Recent searches',
                     style: GoogleFonts.manrope(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -281,10 +313,10 @@ class _SearchScreenState extends State<SearchScreen> {
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     child: Text(
-                      'Clear',
+                      'Clear all',
                       style: GoogleFonts.manrope(
                         fontSize: 12,
-                        color: Colors.grey[400],
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
                   ),
@@ -295,21 +327,44 @@ class _SearchScreenState extends State<SearchScreen> {
               child: ListView.builder(
                 itemCount: searches.length,
                 itemBuilder: (context, i) {
-                  final q = searches[i];
+                  final r = searches[i];
+                  final q = r.query;
+                  final isArabic =
+                      RegExp(r'[\u0600-\u06FF]').hasMatch(q);
                   return ListTile(
                     dense: true,
                     leading: Icon(Icons.history,
                         size: 18, color: Colors.grey[400]),
                     title: Text(
                       q,
-                      style: GoogleFonts.manrope(
-                          fontSize: 14, color: Colors.black87),
+                      textDirection: isArabic
+                          ? TextDirection.rtl
+                          : TextDirection.ltr,
+                      style: isArabic
+                          ? GoogleFonts.notoNaskhArabic(
+                              fontSize: 15, color: Colors.black87)
+                          : GoogleFonts.manrope(
+                              fontSize: 14, color: Colors.black87),
                     ),
-                    trailing: IconButton(
-                      icon: Icon(Icons.close,
-                          size: 16, color: Colors.grey[400]),
-                      onPressed: () =>
-                          context.read<RecentSearchesController>().remove(q),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          RecentSearchesController.relativeTime(r.time),
+                          style: GoogleFonts.manrope(
+                            fontSize: 11,
+                            color: Colors.grey[400],
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.close,
+                              size: 16, color: Colors.grey[400]),
+                          splashRadius: 18,
+                          onPressed: () => context
+                              .read<RecentSearchesController>()
+                              .remove(q),
+                        ),
+                      ],
                     ),
                     onTap: () {
                       _searchController.text = q;
@@ -325,28 +380,32 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  // ── No-results state ─────────────────────────────────────────────────────────
+  // ── No-results state (mockup phone 11) ──────────────────────────────────────
 
   Widget _buildNoResultsState(BuildContext context, String query) {
-    final isArabic = RegExp(r'[\u0600-\u06FF]').hasMatch(query);
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.search_off, size: 48, color: Colors.grey[300]),
+            Text(
+              '∅',
+              style: GoogleFonts.manrope(
+                fontSize: 56,
+                color: Colors.grey[300],
+                fontWeight: FontWeight.w300,
+              ),
+            ),
             const SizedBox(height: 12),
             Text(
-              'No results found.',
+              'No results found',
               style: GoogleFonts.manrope(
-                  fontSize: 16, color: Colors.grey[500]),
+                  fontSize: 15, color: Colors.grey[600]),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 6),
             Text(
-              isArabic
-                  ? 'Try without diacritics, or search by root letters only.'
-                  : 'Try a different spelling, or search in Arabic.',
+              'Check the spelling or try a different word',
               textAlign: TextAlign.center,
               style: GoogleFonts.manrope(
                   fontSize: 13, color: Colors.grey[400]),
@@ -404,9 +463,48 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  // ── Word tile ────────────────────────────────────────────────────────────────
+  // ── Long-press action sheet ──────────────────────────────────────────────────
 
-  Widget _buildWordTile(BuildContext context, Word word, String query) {
+  void _showWordActions(BuildContext context, Word word) {
+    final favs = context.read<FavouritesController>();
+    final repo = context.read<DictionaryRepository>();
+    final isFav = favs.isFavourite(word.id);
+    final meaning = word.primaryMeaning ?? '';
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _WordActionSheet(
+        word: word,
+        meaning: meaning,
+        isFavourite: isFav,
+        repository: repo,
+        onToggleFav: () => favs.toggle(word.id),
+      ),
+    );
+  }
+}
+
+// ── Word tile (reused by favourites screen) ─────────────────────────────────
+
+class WordTile extends StatelessWidget {
+  final Word word;
+  final String query;
+  final VoidCallback? onLongPress;
+  final VoidCallback? onTap;
+
+  const WordTile({
+    Key? key,
+    required this.word,
+    this.query = '',
+    this.onLongPress,
+    this.onTap,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
     final isArabicSearch = RegExp(r'[\u0600-\u06FF]').hasMatch(query);
     final String displayMeaning =
         Formatters.cleanMeaning(word.primaryMeaning ?? '');
@@ -415,11 +513,12 @@ class _SearchScreenState extends State<SearchScreen> {
     final bool isWeak = Formatters.isWeakRoot(word);
 
     return InkWell(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => WordDetailScreen(word: word)),
-      ),
-      onLongPress: () => _showWordActions(context, word),
+      onTap: onTap ??
+          () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => WordDetailScreen(word: word)),
+              ),
+      onLongPress: onLongPress,
       child: Container(
         padding: const EdgeInsets.all(16.0),
         child: Row(
@@ -434,8 +533,8 @@ class _SearchScreenState extends State<SearchScreen> {
                   if (!isWeak)
                     Text(
                       'from',
-                      style:
-                          GoogleFonts.manrope(fontSize: 11, color: Colors.grey[500]),
+                      style: GoogleFonts.manrope(
+                          fontSize: 11, color: Colors.grey[500]),
                     ),
                   if (isWeak)
                     Container(
@@ -507,7 +606,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         text: TextSpan(
                           style: GoogleFonts.notoNaskhArabic(
                               fontSize: 20, fontWeight: FontWeight.bold),
-                          children: isArabicSearch
+                          children: isArabicSearch && query.isNotEmpty
                               ? TextHighlighter.highlightArabicForList(
                                   word.formArabic,
                                   query,
@@ -516,8 +615,7 @@ class _SearchScreenState extends State<SearchScreen> {
                               : [
                                   TextSpan(
                                     text: word.formArabic,
-                                    style:
-                                        const TextStyle(color: Colors.black87),
+                                    style: const TextStyle(color: Colors.black87),
                                   )
                                 ],
                         ),
@@ -551,7 +649,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     text: TextSpan(
                       style: GoogleFonts.manrope(
                           fontSize: 14, color: Colors.grey[600]),
-                      children: !isArabicSearch
+                      children: !isArabicSearch && query.isNotEmpty
                           ? TextHighlighter.highlightQuery(
                               displayMeaning, query,
                               baseColor: Colors.grey[600]!)
@@ -563,29 +661,6 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  // ── Long-press action sheet ──────────────────────────────────────────────────
-
-  void _showWordActions(BuildContext context, Word word) {
-    final favs = context.read<FavouritesController>();
-    final repo = context.read<DictionaryRepository>();
-    final isFav = favs.isFavourite(word.id);
-    final meaning = word.primaryMeaning ?? '';
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => _WordActionSheet(
-        word: word,
-        meaning: meaning,
-        isFavourite: isFav,
-        repository: repo,
-        onToggleFav: () => favs.toggle(word.id),
       ),
     );
   }
@@ -608,41 +683,71 @@ class _WordActionSheet extends StatelessWidget {
     required this.onToggleFav,
   });
 
-  void _copy(BuildContext context, String text, String label) {
-    Clipboard.setData(ClipboardData(text: text));
-    Navigator.pop(context);
+  void _toast(BuildContext context, String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(label), duration: const Duration(seconds: 1)),
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
     );
   }
 
+  void _copy(BuildContext context, String text, String toastMessage) {
+    Clipboard.setData(ClipboardData(text: text));
+    Navigator.pop(context);
+    _toast(context, toastMessage);
+  }
+
   Future<String> _buildBundle() async {
+    // Per mockup §7: Arabic throughout, no romanisation.
     final firstLine = '${word.formArabic}: $meaning';
-    if (word.wordType != 'base_verb') return firstLine;
+    final type = word.wordType.toLowerCase();
 
-    try {
-      final table = await repository.getConjugationTable(word);
-      if (table == null || table.past.isEmpty) return firstLine;
+    // Verbs: append past / present / imperative 3rd-sing-masc
+    if (word.wordType == 'base_verb') {
+      try {
+        final table = await repository.getConjugationTable(word);
+        if (table == null || table.past.isEmpty) return firstLine;
 
-      String _find(List<ConjugationRow> rows, String p, String n, String g) {
-        try {
-          return rows.firstWhere(
-            (r) => r.pronoun == p && r.number == n && r.gender == g,
-          ).formArabic;
-        } catch (_) {
-          return '';
+        String _find(List<ConjugationRow> rows, String p, String n, String g) {
+          try {
+            return rows.firstWhere(
+              (r) => r.pronoun == p && r.number == n && r.gender == g,
+            ).formArabic;
+          } catch (_) {
+            return '';
+          }
         }
-      }
 
-      final past = _find(table.past, '3rd', 'singular', 'masculine');
-      final present = _find(table.present, '3rd', 'singular', 'masculine');
-      final imp = _find(table.imperative, '2nd', 'singular', 'masculine');
-      final forms = [past, present, imp].where((s) => s.isNotEmpty).join('، ');
-      if (forms.isEmpty) return firstLine;
-      return '$firstLine\n$forms';
-    } catch (_) {
-      return firstLine;
+        final past = _find(table.past, '3rd', 'singular', 'masculine');
+        final present = _find(table.present, '3rd', 'singular', 'masculine');
+        final imp = _find(table.imperative, '2nd', 'singular', 'masculine');
+        final forms =
+            [past, present, imp].where((s) => s.isNotEmpty).join('، ');
+        if (forms.isEmpty) return firstLine;
+        return '$firstLine\n$forms';
+      } catch (_) {
+        return firstLine;
+      }
     }
+
+    // Nouns with a plural: append singular، plural
+    if (type.contains('noun') || type == 'adjective' || type.contains('adjective')) {
+      try {
+        final related = await repository.getRelatedForms(word.id);
+        Word? plural;
+        for (final w in related) {
+          final wt = w.wordType.toLowerCase();
+          if (wt.contains('plural') ||
+              (w.number ?? '').toLowerCase() == 'plural') {
+            plural = w;
+            break;
+          }
+        }
+        if (plural != null) {
+          return '$firstLine\n${word.formArabic}، ${plural.formArabic}';
+        }
+      } catch (_) {}
+    }
+
+    return firstLine;
   }
 
   @override
@@ -661,7 +766,7 @@ class _WordActionSheet extends StatelessWidget {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          // Word header
+          // Word header — echoes the card being acted on
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
@@ -689,15 +794,31 @@ class _WordActionSheet extends StatelessWidget {
             ),
           ),
           const Divider(height: 1),
+          // Open → detail
+          _ActionTile(
+            icon: Icons.open_in_new,
+            label: 'Open',
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => WordDetailScreen(word: word),
+                ),
+              );
+            },
+          ),
           _ActionTile(
             icon: Icons.copy_outlined,
             label: 'Copy word',
-            onTap: () => _copy(context, word.formArabic, 'Word copied'),
+            onTap: () => _copy(context, word.formArabic,
+                'Copied ${word.formArabic}'),
           ),
           _ActionTile(
             icon: Icons.notes_outlined,
             label: 'Copy meaning',
-            onTap: () => _copy(context, meaning, 'Meaning copied'),
+            onTap: () => _copy(context, meaning,
+                'Copied meaning for ${word.formArabic}'),
           ),
           _ActionTile(
             icon: Icons.content_copy_outlined,
@@ -705,7 +826,7 @@ class _WordActionSheet extends StatelessWidget {
             onTap: () => _copy(
               context,
               '${word.formArabic}: $meaning',
-              'Copied',
+              'Copied ${word.formArabic}: …',
             ),
           ),
           _ActionTile(
@@ -713,7 +834,32 @@ class _WordActionSheet extends StatelessWidget {
             label: 'Copy bundle',
             onTap: () async {
               final bundle = await _buildBundle();
-              if (context.mounted) _copy(context, bundle, 'Bundle copied');
+              if (context.mounted) {
+                _copy(context, bundle,
+                    'Copied bundle for ${word.formArabic}');
+              }
+            },
+          ),
+          _ActionTile(
+            icon: Icons.ios_share,
+            label: 'Share bundle',
+            onTap: () async {
+              final bundle = await _buildBundle();
+              if (!context.mounted) return;
+              Navigator.pop(context);
+              try {
+                await Share.share(
+                  bundle,
+                  subject: word.formArabic,
+                );
+              } catch (_) {
+                // Fallback: if platform share isn't available, copy instead.
+                if (context.mounted) {
+                  Clipboard.setData(ClipboardData(text: bundle));
+                  _toast(context,
+                      'Share unavailable — bundle copied to clipboard');
+                }
+              }
             },
           ),
           _ActionTile(

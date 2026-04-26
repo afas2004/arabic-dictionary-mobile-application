@@ -25,11 +25,12 @@ void main() async {
     cache:      cache,
   );
 
-  // Load persisted preferences in parallel.
+  // Load persisted preferences in parallel. Fall back to defaults if the
+  // platform channel isn't ready (e.g. first launch after fresh install).
   final results = await Future.wait([
-    ThemeController.load(),
-    RecentSearchesController.load(),
-    FavouritesController.load(),
+    ThemeController.load().catchError((_) => ThemeController()),
+    RecentSearchesController.load().catchError((_) => RecentSearchesController()),
+    FavouritesController.load().catchError((_) => FavouritesController()),
   ]);
 
   final themeController   = results[0] as ThemeController;

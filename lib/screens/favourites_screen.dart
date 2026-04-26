@@ -2,6 +2,9 @@
 //
 // Displays the user's starred words. IDs are stored in FavouritesController;
 // the full Word objects are fetched from the repository on open.
+//
+// Uses the same WordTile widget as the search results list so rows look
+// identical across screens (per ui_mockups_v2.html §5).
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -9,8 +12,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:arabic_dictionary/controllers/favourites_controller.dart';
 import 'package:arabic_dictionary/models/models.dart';
 import 'package:arabic_dictionary/repositories/dictionary_repository.dart';
-import 'package:arabic_dictionary/utils/formatters.dart';
-import 'word_detail_screen.dart';
+import 'search_screen.dart' show WordTile;
 
 class FavouritesScreen extends StatefulWidget {
   final FavouritesController controller;
@@ -51,6 +53,7 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
@@ -71,103 +74,65 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
           }
           final words = snapshot.data ?? [];
           if (words.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.star_border, size: 48, color: Colors.grey[300]),
-                  const SizedBox(height: 12),
-                  Text(
-                    'No favourites yet',
-                    style: GoogleFonts.manrope(
-                      fontSize: 16,
-                      color: Colors.grey[400],
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Tap ★ on a word to save it here.',
-                    style: GoogleFonts.manrope(
-                      fontSize: 13,
-                      color: Colors.grey[400],
-                    ),
-                  ),
-                ],
-              ),
-            );
+            return _EmptyFavourites();
           }
-          return ListView.separated(
-            itemCount: words.length,
-            separatorBuilder: (_, __) =>
-                Divider(height: 1, color: Colors.grey[200]),
-            itemBuilder: (context, i) {
-              final w = words[i];
-              return InkWell(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => WordDetailScreen(word: w),
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // "N saved words" section header per ui_mockups_v2.html §5
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Text(
+                  '${words.length} saved word${words.length == 1 ? '' : 's'}',
+                  style: GoogleFonts.manrope(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey[700],
+                    letterSpacing: 0.3,
                   ),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 14),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // Left: type
-                      Text(
-                        Formatters.formatWordType(w.wordType),
-                        style: GoogleFonts.manrope(
-                          fontSize: 12,
-                          color: Colors.grey[500],
-                        ),
-                      ),
-                      // Right: Arabic + meaning
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              w.formArabic,
-                              style: GoogleFonts.notoNaskhArabic(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
-                              ),
-                            ),
-                            if (w.primaryMeaning != null &&
-                                w.primaryMeaning!.isNotEmpty)
-                              Text(
-                                w.primaryMeaning!,
-                                textAlign: TextAlign.right,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.manrope(
-                                  fontSize: 13,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      // Unstar button
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () => widget.controller.toggle(w.id),
-                        child: Icon(
-                          Icons.star,
-                          color: Theme.of(context).colorScheme.primary,
-                          size: 20,
-                        ),
-                      ),
-                    ],
-                  ),
+              ),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: words.length,
+                  separatorBuilder: (_, __) =>
+                      Divider(height: 1, color: Colors.grey[200]),
+                  itemBuilder: (context, i) => WordTile(word: words[i]),
                 ),
-              );
-            },
+              ),
+            ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _EmptyFavourites extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.star_border, size: 48, color: Colors.grey[300]),
+          const SizedBox(height: 12),
+          Text(
+            'No favourites yet',
+            style: GoogleFonts.manrope(
+              fontSize: 16,
+              color: Colors.grey[400],
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Tap \u2605 on a word to save it here.',
+            style: GoogleFonts.manrope(
+              fontSize: 13,
+              color: Colors.grey[400],
+            ),
+          ),
+        ],
       ),
     );
   }

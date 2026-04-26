@@ -134,12 +134,38 @@ class Stemmer {
 
   /// Strips diacritics + tatweel, unifies alef variants.  Matches
   /// `populate_conjugations.py::normalize()` byte-for-byte.
+  ///
+  /// NOTE: hamza-bearing letters (ؤ ئ ء) are deliberately NOT folded here.
+  /// Learners typically TYPE the hamza as part of the word, and the DB stores
+  /// the canonical with-hamza spelling.  Folding hamza in normalize() would
+  /// throw away that information.  Instead, hamza is handled as a SECONDARY
+  /// retry inside [_lookupLexicon] / [_lookupConjugation] — see [stripHamza].
   static String normalize(String input) {
     var s = input.trim();
     s = s.replaceAll(_diacriticsRegex, '');
     s = s.replaceAll(_tatweelRegex, '');
     s = s.replaceAll(_alefVariants, '\u0627');
     return s;
+  }
+
+  /// Maps seated hamzas to their plain seats and drops bare hamza:
+  ///   ؤ (U+0624) → و     ئ (U+0626) → ي     ء (U+0621) → ''
+  ///
+  /// Only used as a fallback comparator when a direct form_stripped lookup
+  /// has missed.  Both the user query and the DB column are passed through
+  /// the same transformation so the match works regardless of which side
+  /// happens to carry the hamza.
+  ///
+  /// Worked examples:
+  ///   user "سوال"  + DB "سؤال"   → both → "سوال"  ✓
+  ///   user "سؤال"  + DB "سوال"   → both → "سوال"  ✓
+  ///   user "شي"    + DB "شيء"    → both → "شي"    ✓
+  ///   user "مسوول" + DB "مسؤول"  → both → "مسوول" ✓
+  static String stripHamza(String input) {
+    return input
+        .replaceAll('\u0624', '\u0648') // ؤ → و
+        .replaceAll('\u0626', '\u064A') // ئ → ي
+        .replaceAll('\u0621', '');       // ء → ''
   }
 
   // ── Clitic inventories ─────────────────────────────────────────────────────
@@ -165,15 +191,22 @@ class Stemmer {
   // Enclitics — object pronouns, feminine markers, dual/plural verbal suffixes,
   // nisba 'ي', and the teh-marbuta variants.
   // Longest first so a greedy strip picks ـكم over ـك.
+  // NOTE: shadda-bearing entries (كنّ, هنّ) were removed — normalize() strips
+  // U+064B..U+065F before this list runs, so any literal containing shadda
+  // (U+0651) can never match a normalised token.  The plain forms (كن, هن)
+  // already cover those cases below.
   static const List<String> _suffixes = [
-    'تموها', 'تموهم',            // 2-mp-past + obj
-    'تمون', 'تموه',
-    'كموه', 'كموها',
-    'تموا', 'نيهم', 'نيها',
-    'كما', 'كنّ', 'هما', 'هنّ',
+    // 5-char (perfect 2-pl + object pronoun)
+    'تموها', 'تموهم', 'كموها',
+    // 4-char
+    'كموه', 'تمون', 'تموه', 'تموا', 'نيهم', 'نيها',
+    // 3-char
+    'كما', 'هما',
+    // 2-char (object pronouns, dual / plural endings, fem markers)
     'هم', 'هن', 'كم', 'كن',
     'نا', 'ني', 'ها', 'وا', 'تن', 'تم',
     'ون', 'ين', 'ان', 'ات',
+    // 1-char
     'ه', 'ك', 'ي', 'ا', 'ن', 'ة', 'ى',
   ];
 
@@ -310,6 +343,7 @@ class Stemmer {
   ///     because dictionary queries skew heavily toward nominal forms.
   ///   3. Anything else falls to the bottom.
   Future<Map<String, Object?>?> _lookupLexicon(String token) async {
+    // Primary: exact form_stripped match (uses idx_lex_stripped, ~indexed seek).
     final rows = await _db.rawQuery(
       '''
       SELECT id, form_arabic, word_type, frequency
@@ -328,7 +362,37 @@ class Stemmer {
       ''',
       [token],
     );
-    return rows.isEmpty ? null : rows.first;
+    if (rows.isNotEmpty) return rows.first;
+
+    // Hamza-tolerant fallback: only invoked on a primary miss.  Compares both
+    // sides with seated hamzas mapped to their plain seats and bare hamza
+    // dropped, so a learner who typed "سوال" matches a DB row "سؤال" — and
+    // vice versa.  This query cannot use the form_stripped index (REPLACE on
+    // the column forces a scan), but with the cache + tier short-circuit the
+    // amortised cost is one extra ~15-30 ms scan per unique miss.
+    final hamzaless = stripHamza(token);
+    final fbRows = await _db.rawQuery(
+      '''
+      SELECT id, form_arabic, word_type, frequency
+      FROM lexicon
+      WHERE replace(replace(replace(form_stripped,
+                                    '\u0624', '\u0648'),
+                            '\u0626', '\u064A'),
+                    '\u0621', '') = ?
+      ORDER BY
+        is_common DESC,
+        frequency DESC,
+        CASE word_type
+          WHEN 'noun'      THEN 0
+          WHEN 'adjective' THEN 1
+          WHEN 'base_verb' THEN 2
+          ELSE 3
+        END
+      LIMIT 1
+      ''',
+      [hamzaless],
+    );
+    return fbRows.isEmpty ? null : fbRows.first;
   }
 
   /// Returns the `{id, form_arabic}` of the base verb whose `conjugations`
@@ -341,6 +405,7 @@ class Stemmer {
   /// paradigm, so using it as the primary sort key picks the wrong verb
   /// whenever two paradigms collide on a shared stripped form.
   Future<Map<String, Object?>?> _lookupConjugation(String token) async {
+    // Primary: exact form_stripped match (uses idx_conj_stripped).
     final rows = await _db.rawQuery(
       '''
       SELECT l.id, l.form_arabic
@@ -352,7 +417,25 @@ class Stemmer {
       ''',
       [token],
     );
-    return rows.isEmpty ? null : rows.first;
+    if (rows.isNotEmpty) return rows.first;
+
+    // Hamza-tolerant fallback — see [_lookupLexicon] for the rationale.
+    final hamzaless = stripHamza(token);
+    final fbRows = await _db.rawQuery(
+      '''
+      SELECT l.id, l.form_arabic
+      FROM conjugations c
+      JOIN lexicon l ON l.id = c.base_word_id
+      WHERE replace(replace(replace(c.form_stripped,
+                                    '\u0624', '\u0648'),
+                            '\u0626', '\u064A'),
+                    '\u0621', '') = ?
+      ORDER BY l.is_common DESC, l.frequency DESC, c.display_order ASC
+      LIMIT 1
+      ''',
+      [hamzaless],
+    );
+    return fbRows.isEmpty ? null : fbRows.first;
   }
 
   // ── Tier 3 / 4: proclitic strip + retry ──────────────────────────────────
