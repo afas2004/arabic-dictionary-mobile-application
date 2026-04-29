@@ -45,7 +45,10 @@ class _SearchScreenState extends State<SearchScreen> {
   Timer? _recentDebounce;
   static const Duration _recentSearchDebounce = Duration(milliseconds: 1500);
 
-  Set<String> _activeFilters = {};
+  /// Active token chip for sentence queries.  null == "All" (no filter).
+  /// Single-select per ui_mockups_v2 §2 — only one token (or All) is
+  /// active at a time.
+  String? _activeChip;
 
   @override
   void initState() {
@@ -73,20 +76,58 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
+  /// Splits [query] into chip tokens, deduped, in original order.
+  /// Works on both scripts — Arabic has no case so .toLowerCase() is a
+  /// no-op there but doesn't hurt; for English it normalises case so
+  /// "Go GO go" yields one chip.
   List<String> _extractTokens(String query) {
-    return query
-        .toLowerCase()
-        .split(RegExp(r'\s+'))
-        .where((t) => t.length > 1)
-        .toSet()
-        .toList();
+    final seen = <String>{};
+    final out = <String>[];
+    for (final raw in query.split(RegExp(r'\s+'))) {
+      final t = raw.toLowerCase().trim();
+      if (t.length < 2) continue;
+      if (seen.add(t)) out.add(t);
+    }
+    return out;
   }
 
+  /// Same alef + diacritic flattening as Stemmer.normalize, inlined so we
+  /// can compare a chip token to a Word's form_stripped without importing
+  /// the engine here.
+  String _normaliseAr(String s) {
+    return s
+        .replaceAll(RegExp(r'[ً-ٰٟ]'), '')
+        .replaceAll('ـ', '')
+        .replaceAll(RegExp(r'[أإآٱ]'), 'ا');
+  }
+
+  /// Filters [words] down to entries that match the active chip.  null
+  /// (== "All") returns the list unchanged.  For Arabic chips we match on
+  /// the alef-flat form_stripped substring so a chip like "الولد" finds
+  /// rows whose stripped form is "ولد"; for English chips we match on
+  /// primaryMeaning lower-case substring as before.
   List<Word> _applyFilters(List<Word> words, String query) {
-    if (_activeFilters.isEmpty) return words;
+    final chip = _activeChip;
+    if (chip == null) return words;
+
+    final isArabicChip = RegExp(r'[؀-ۿ]').hasMatch(chip);
+    if (isArabicChip) {
+      final flat = _normaliseAr(chip);
+      // Trim a leading definite article so "الولد" still matches "ولد".
+      final core = flat.startsWith('ال') && flat.length > 2
+          ? flat.substring(2)
+          : flat;
+      return words.where((w) {
+        final ws = _normaliseAr(w.formStripped);
+        return ws.contains(core) || ws.contains(flat);
+      }).toList();
+    }
+
+    // English chip → match meaning_text.
+    final low = chip.toLowerCase();
     return words.where((w) {
       final meaning = (w.primaryMeaning ?? '').toLowerCase();
-      return _activeFilters.any((f) => meaning.contains(f));
+      return meaning.contains(low);
     }).toList();
   }
 
@@ -171,9 +212,10 @@ class _SearchScreenState extends State<SearchScreen> {
                 } else if (val.isEmpty && !_isArabicInput) {
                   setState(() => _isArabicInput = true);
                 }
-                // Reset filters when query changes
-                if (_activeFilters.isNotEmpty) {
-                  setState(() => _activeFilters = {});
+                // Reset the token chip when the query changes — the chip
+                // is meaningful only against the current result set.
+                if (_activeChip != null) {
+                  setState(() => _activeChip = null);
                 }
                 // Short debounce → run the search.
                 _debounce?.cancel();
@@ -197,7 +239,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   icon: Icon(Icons.close, color: Colors.grey[400], size: 20),
                   onPressed: () {
                     _searchController.clear();
-                    setState(() => _activeFilters = {});
+                    setState(() => _activeChip = null);
                     context.read<SearchCubit>().loadInitial();
                   },
                 ),
@@ -233,8 +275,10 @@ class _SearchScreenState extends State<SearchScreen> {
               return _buildNoResultsState(context, state.query);
             }
 
-            final isEnglish = !RegExp(r'[\u0600-\u06FF]').hasMatch(state.query);
-            final tokens = isEnglish ? _extractTokens(state.query) : <String>[];
+            // Token chips for sentence queries \u2014 both Arabic and English.
+            // Chips show only when the query has 2+ distinct tokens; single
+            // words don't need filtering.
+            final tokens = _extractTokens(state.query);
             final showChips = tokens.length >= 2;
             final displayed = _applyFilters(state.words, state.query);
 
@@ -446,41 +490,52 @@ class _SearchScreenState extends State<SearchScreen> {
 
   // ── Token filter chips ───────────────────────────────────────────────────────
 
+  /// Token filter bar per ui_mockups_v2 §2.  Single-select: the user
+  /// picks "All" or one specific token.  Tapping the active chip clears
+  /// back to "All".  Layout is a horizontal scrolling row so very long
+  /// sentences stay usable.
   Widget _buildFilterChips(List<String> tokens) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final entries = <String?>[null, ...tokens]; // null sentinel = "All"
+    final isArabicQuery = RegExp(r'[؀-ۿ]').hasMatch(tokens.firstOrNull ?? '');
+
     return Container(
       height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       color: Colors.grey[50],
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: tokens.length,
+        itemCount: entries.length,
         separatorBuilder: (_, __) => const SizedBox(width: 6),
         itemBuilder: (context, i) {
-          final t = tokens[i];
-          final active = _activeFilters.contains(t);
+          final entry = entries[i];
+          final isAll = entry == null;
+          final active = _activeChip == entry;
+          final label = isAll ? 'All' : entry!;
+
           return FilterChip(
             label: Text(
-              t,
-              style: GoogleFonts.manrope(
-                fontSize: 12,
-                color: active
-                    ? Colors.white
-                    : Colors.grey[700],
-              ),
+              label,
+              // Use Arabic font for Arabic chips, manrope for "All" / English.
+              style: (isAll || !isArabicQuery)
+                  ? GoogleFonts.manrope(
+                      fontSize: 12,
+                      color: active ? Colors.white : Colors.grey[700],
+                    )
+                  : GoogleFonts.notoNaskhArabic(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: active ? Colors.white : Colors.grey[700],
+                    ),
             ),
             selected: active,
-            onSelected: (val) {
+            onSelected: (_) {
               setState(() {
-                if (val) {
-                  _activeFilters.add(t);
-                } else {
-                  _activeFilters.remove(t);
-                }
+                _activeChip = isAll ? null : entry;
               });
             },
-            selectedColor: Theme.of(context).colorScheme.primary,
+            selectedColor: primary,
             backgroundColor: Colors.grey[200],
-            checkmarkColor: Colors.white,
             showCheckmark: false,
             padding: const EdgeInsets.symmetric(horizontal: 4),
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -536,7 +591,9 @@ class WordTile extends StatelessWidget {
     final isArabicSearch = RegExp(r'[\u0600-\u06FF]').hasMatch(query);
     final String displayMeaning =
         Formatters.cleanMeaning(word.primaryMeaning ?? '');
-    final String readableType = Formatters.formatWordType(word.wordType);
+    // Use the rich label ("Verb · فعل", "Noun · اسم" …) so the result card
+    // doubles as a learner-grammar hint per ui_mockups_v2 §3.
+    final String readableType = Formatters.formatWordTypeRich(word.wordType);
     final bool showRoot = Formatters.shouldDisplayRoot(word);
     final bool isWeak = Formatters.isWeakRoot(word);
 

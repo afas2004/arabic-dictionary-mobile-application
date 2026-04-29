@@ -767,7 +767,10 @@ List<ConjugationRow> _generateHollowConjugations(
       presLong  = '$r1$presR1Vowel$presLongVowel$r3';
       presShort = '$r1$presR1Vowel$r3';
       presAffixes   = _presentAffixes;
-      impPrefix     = _alef; // hamzat al-wasl — no harakah
+      // Bug #4 fix: Form I hollow presShort starts with a vowelled consonant
+      // (e.g. قُل for قال, بِع for باع) — no consonant cluster at the start,
+      // so هَمْزَةُ الوَصْل is NOT needed.  Correct: قُلْ not اقُلْ.
+      impPrefix     = ''; // no hamzat al-wasl for hollow Form I imperatives
       presVowelOnR1 = presR1Vowel;
   }
 
@@ -901,7 +904,9 @@ List<ConjugationRow> _buildRowsFromStems({
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Increment this whenever conjugation logic changes to bust the SQLite cache.
-const int _engineVersion = 3;
+// v4: Bug #4 fix — hollow Form I imperatives no longer prepend hamzat al-wasl
+//     (قُلْ not اقُلْ, قُولِي not اقُولِي, etc.)
+const int _engineVersion = 4;
 
 // Track whether we've checked the version in this DB session already.
 bool _versionChecked = false;

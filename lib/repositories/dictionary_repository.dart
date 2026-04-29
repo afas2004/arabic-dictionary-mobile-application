@@ -108,12 +108,17 @@ class DictionaryRepository {
           ELSE 0
         END AS relevance_score
       FROM (
+        -- GROUP BY form_arabic (not form_stripped) so distinct lemmas
+        -- that only differ in diacritics (e.g. غَرِقَ vs غَرَّقَ — same
+        -- form_stripped='غرق', different shadda/vowels) both surface.
+        -- True duplicates with identical form_arabic + word_type (e.g.
+        -- the مَقَالِي pair at ids 28057/28058) still collapse to MIN(id).
         SELECT MIN(id) AS min_id
         FROM lexicon
         WHERE replace(replace(replace(replace(replace(replace(replace(form_stripped,
                        'أ','ا'),'إ','ا'),'آ','ا'),'ٱ','ا'),'ؤ','و'),'ئ','ي'),'ء','') LIKE '%' || ? || '%'
            OR root LIKE ? || '%'
-        GROUP BY form_stripped, word_type
+        GROUP BY form_arabic, word_type
       ) g
       JOIN lexicon l2 ON l2.id = g.min_id
       LEFT JOIN meanings m ON l2.id = m.lexicon_id AND m.order_num = 1
@@ -220,7 +225,7 @@ class DictionaryRepository {
         FROM lexicon l
         JOIN meanings m ON m.lexicon_id = l.id
         WHERE lower(m.meaning_text) LIKE '%' || ? || '%'
-        GROUP BY l.form_stripped, l.word_type
+        GROUP BY l.form_arabic, l.word_type  -- preserve homographs; see directArabicLookup
       ) g
       JOIN lexicon l2 ON l2.id = g.min_id
       JOIN meanings m ON m.lexicon_id = l2.id AND m.order_num = 1
@@ -254,7 +259,7 @@ class DictionaryRepository {
         FROM lexicon l
         JOIN meanings m ON m.lexicon_id = l.id
         WHERE lower(m.meaning_text) LIKE '%' || ? || '%'
-        GROUP BY l.form_stripped, l.word_type
+        GROUP BY l.form_arabic, l.word_type  -- preserve homographs; see directArabicLookup
       ) g
       JOIN lexicon l2 ON l2.id = g.min_id
       JOIN meanings m ON m.lexicon_id = l2.id AND m.order_num = 1

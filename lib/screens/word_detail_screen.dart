@@ -5,9 +5,12 @@
 //   Non-verbs: Meaning | Forms | Relation
 //
 // The 4×3 conjugation grid (+ نحن/أنا strip) is preserved exactly as before.
-// The AppBar holds only back + star; copy is reached via the action sheet.
+// AppBar carries: back · copy-word (granular, lemma only) · favourite.
+// The long-press action sheet on the search list still offers the richer
+// copy variants (meaning, word+meaning, bundle, share).
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Clipboard
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -159,7 +162,29 @@ class WordDetailScreen extends StatelessWidget {
       centerTitle: true,
       title: const SizedBox.shrink(),
       actions: [
-        if (loadedWord != null)
+        if (loadedWord != null) ...[
+          // Granular copy — copies the Arabic lemma only (no meaning).
+          // Distinct from the long-press action sheet's bundle/meaning
+          // variants per ui_mockups_v2 §3 and the original handoff.
+          IconButton(
+            icon: const Icon(Icons.content_copy_outlined, color: Colors.black87),
+            tooltip: 'Copy word',
+            onPressed: () async {
+              await Clipboard.setData(
+                  ClipboardData(text: loadedWord.formArabic));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  duration: const Duration(seconds: 2),
+                  behavior: SnackBarBehavior.floating,
+                  content: Text(
+                    'Copied ${loadedWord.formArabic}',
+                    style: GoogleFonts.manrope(),
+                  ),
+                ),
+              );
+            },
+          ),
           AnimatedBuilder(
             animation: context.read<FavouritesController>(),
             builder: (context, _) {
@@ -175,6 +200,7 @@ class WordDetailScreen extends StatelessWidget {
               );
             },
           ),
+        ],
       ],
     );
   }
@@ -221,6 +247,11 @@ class WordDetailScreen extends StatelessWidget {
                       word.formArabic,
                       word.root,
                       mutationLetters: mutations,
+                      // Per-user spec: paint mutations in the same blue as
+                      // root letters for now.  The function still supports
+                      // a separate red so we can reintroduce it later
+                      // without code changes — only this call site moves.
+                      mutationColor: TextHighlighter.matchColor,
                     ),
                   ),
                 )
@@ -273,7 +304,9 @@ class WordDetailScreen extends StatelessWidget {
                 Text('•', style: TextStyle(color: Colors.grey[400])),
               ],
               Text(
-                Formatters.formatWordType(word.wordType),
+                // Rich label (English · Arabic grammar term).  Detail page has
+                // room for the long form per ui_mockups_v2 §3.
+                Formatters.formatWordTypeRich(word.wordType),
                 style: GoogleFonts.manrope(fontSize: 12, color: Colors.black54),
               ),
               if (Formatters.detectVerbFormLabel(word.formStripped) != null) ...[
@@ -481,6 +514,7 @@ class _InitialTensesCallout extends StatelessWidget {
           text,
           word.root,
           mutationLetters: WordDetailScreen.mutationLettersFor(word),
+          mutationColor: TextHighlighter.matchColor,
           baseColor: Colors.black87,
         ),
       ),
@@ -922,6 +956,7 @@ class _ConjugationTab extends StatelessWidget {
                   arabicText,
                   word.root,
                   mutationLetters: WordDetailScreen.mutationLettersFor(word),
+                  mutationColor: TextHighlighter.matchColor,
                   baseColor: Colors.black87,
                 ),
               ),
@@ -947,6 +982,7 @@ class _ConjugationTab extends StatelessWidget {
                       arabicText,
                       word.root,
                       mutationLetters: WordDetailScreen.mutationLettersFor(word),
+                      mutationColor: TextHighlighter.matchColor,
                       baseColor: Colors.black87,
                     ),
                   ),
