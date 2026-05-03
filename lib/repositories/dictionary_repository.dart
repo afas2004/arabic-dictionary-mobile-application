@@ -23,11 +23,11 @@ class DictionaryRepository {
 
   Future<Database> _initDB() async {
     final Directory documentsDirectory = await getApplicationDocumentsDirectory();
-    final String path = join(documentsDirectory.path, 'arabic_dictionary_v11.db');
+    final String path = join(documentsDirectory.path, 'arabic_dictionary_v13.db');
 
     if (FileSystemEntity.typeSync(path) == FileSystemEntityType.notFound) {
       final ByteData data =
-          await rootBundle.load(join('assets', 'arabic_dictionary_v11.db'));
+          await rootBundle.load(join('assets', 'arabic_dictionary_v13.db'));
       final List<int> bytes =
           data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
       await File(path).writeAsBytes(bytes, flush: true);

@@ -332,6 +332,24 @@ class Stemmer {
 
   // ── DB helpers ─────────────────────────────────────────────────────────────
 
+  /// Returns true only when [token] could produce a different result from the
+  /// REPLACE-chain tolerant fallback compared with the primary indexed lookup.
+  ///
+  /// This guard is intentionally applied ONLY to the conjugations lookup (T2),
+  /// where the table has 315 K rows and the full-scan costs ~450 ms on device.
+  /// It is NOT applied to the lexicon lookup (T1, 37 K rows, ~60 ms) because
+  /// that scan must also handle the case where the *DB column* carries hamza
+  /// (ؤ ئ ء — 1,940 rows) while the *user* typed without it (e.g. سوال for
+  /// سؤال), which cannot be detected from the token alone.
+  ///
+  /// For T2 (conjugations), the column was fully alef-normalised at populate
+  /// time.  A miss on the primary query can only yield a different result from
+  /// the tolerant scan when the token itself contains a seated/bare hamza that
+  /// the DB normalised away.  Tokens with no hamza character guarantee the scan
+  /// is 100 % wasted work — the REPLACE chain transforms nothing.
+  static bool _conjNeedsTolerantFallback(String token) =>
+      token.contains('ؤ') || token.contains('ئ') || token.contains('ء');
+
   /// Returns `{id, form_arabic}` for the first `lexicon` row whose
   /// `form_stripped` equals [token], or null on a miss.
   ///
@@ -363,20 +381,15 @@ class Stemmer {
     );
     if (rows.isNotEmpty) return rows.first;
 
-    // Tolerant fallback: only invoked on a primary miss.  Flattens both
-    // alef variants AND seated hamzas on the column, then matches against
-    // a hamza-stripped user token.  User input is already alef-flat
-    // because normalize() collapsed أ/إ/آ/ٱ → ا upstream — so the column
-    // is the only side that still has alef variants to flatten.
+    // Tolerant fallback: always run on a primary miss.
     //
-    // This catches three classes of miss against the v11 DB:
-    //   1. أرسل / أطعم / Form IV verbs   — DB keeps أ in form_stripped.
-    //   2. سؤال vs سوال                  — DB and user disagree on hamza seat.
-    //   3. مسؤول vs مسوول vs مسءول       — combined alef + hamza variance.
-    //
-    // The query cannot use idx_lex_stripped (REPLACE on the column forces
-    // a scan), but with the cache + tier short-circuit the amortised cost
-    // is one extra ~15-30 ms scan per unique miss.
+    // This is intentionally unguarded — unlike T2, the lexicon column still
+    // carries hamza in ~1,940 rows (ؤ in 171, ئ in 881, ء-final in 888).
+    // A user who types سوال instead of سؤال has no hamza in their token, yet
+    // the DB column has ؤ that needs REPLACE-ing.  We cannot detect this from
+    // the token alone, so we always run the scan.  At ~60 ms on device for
+    // 37 K rows this is acceptable — the much heavier T2 scan (315 K rows,
+    // ~450 ms) gets its own guard in [_lookupConjugation].
     final flat = stripHamza(token);
     final fbRows = await _db.rawQuery(
       '''
@@ -430,10 +443,16 @@ class Stemmer {
     );
     if (rows.isNotEmpty) return rows.first;
 
-    // Tolerant fallback — see [_lookupLexicon] for the rationale.  The
-    // conjugations table was alef-normalised at populate time so the alef
-    // REPLACEs on the column are no-ops there, but we keep them for
-    // defence-in-depth and consistency with the lexicon path.
+    // Tolerant fallback — guarded.
+    //
+    // The conjugations column was fully alef-normalised at populate time, so
+    // the alef REPLACEs in the chain are no-ops.  Only genuine hamza characters
+    // (ؤ ئ ء) in the *token* can yield a different result.  Tokens without
+    // any hamza guarantee the scan returns the same miss as the primary query.
+    // Without this guard every T2 miss triggers a ~450 ms full-scan of 315 K
+    // rows — the dominant cost in real-world sentence queries.
+    if (!_conjNeedsTolerantFallback(token)) return null;
+
     final flat = stripHamza(token);
     final fbRows = await _db.rawQuery(
       '''

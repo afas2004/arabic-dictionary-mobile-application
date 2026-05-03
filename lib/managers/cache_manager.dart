@@ -30,8 +30,9 @@
 //
 // ── Performance logging ───────────────────────────────────────────────────────
 //
-//   CacheManager itself does not log.  SearchManager wraps each tier with a
-//   Stopwatch and emits [PERF] lines via debugPrint for report benchmarking.
+//   CacheManager tracks hits, misses, and evictions internally.
+//   SearchManager reads these counters and emits structured [SEARCH] / [STATS]
+//   lines via debugPrint.  See SearchManager for the full log format.
 
 import 'dart:collection';
 import 'package:flutter/foundation.dart';
@@ -48,12 +49,36 @@ class _LruCache<K, V> {
   // Convention: tail = most recently used, head = least recently used.
   final _map = LinkedHashMap<K, V>();
 
+  // ── Counters (read by CacheManager for logging) ───────────────────────────
+  int _hits      = 0;
+  int _misses    = 0;
+  int _evictions = 0;
+
   _LruCache(this.capacity) : assert(capacity > 0);
+
+  int    get hits      => _hits;
+  int    get misses    => _misses;
+  int    get evictions => _evictions;
+
+  /// Cache hit-rate since the last [resetCounters] call (0.0–1.0).
+  double get hitRate {
+    final total = _hits + _misses;
+    return total == 0 ? 0.0 : _hits / total;
+  }
+
+  /// Resets hit/miss/eviction counters (e.g. at the start of a test run).
+  void resetCounters() {
+    _hits = _misses = _evictions = 0;
+  }
 
   /// Returns the value for [key], promoting it to most-recently-used.
   /// Returns null on a cache miss.
   V? get(K key) {
-    if (!_map.containsKey(key)) return null;
+    if (!_map.containsKey(key)) {
+      _misses++;
+      return null;
+    }
+    _hits++;
     final v = _map.remove(key)!; // pull from current position
     _map[key] = v;               // re-insert at tail (MRU)
     return v;
@@ -64,6 +89,7 @@ class _LruCache<K, V> {
   void put(K key, V value) {
     _map.remove(key);                // remove stale entry if present
     if (_map.length >= capacity) {
+      _evictions++;
       _map.remove(_map.keys.first); // evict LRU (head)
     }
     _map[key] = value;              // insert at tail (MRU)
@@ -109,6 +135,24 @@ class CacheManager {
 
   /// Number of entries currently in the RAM cache.
   int get size => _ram.length;
+
+  /// Maximum number of entries the RAM cache can hold.
+  int get capacity => _ramCapacity;
+
+  /// Total RAM cache hits since app start.
+  int get hits => _ram.hits;
+
+  /// Total RAM cache misses since app start.
+  int get misses => _ram.misses;
+
+  /// Total LRU evictions since app start.
+  int get evictions => _ram.evictions;
+
+  /// Hit-rate as a value 0.0–1.0 (hits / (hits + misses)).
+  double get hitRate => _ram.hitRate;
+
+  /// Resets the hit/miss/eviction counters.
+  void resetCounters() => _ram.resetCounters();
 
   // ── Pre-warm ──────────────────────────────────────────────────────────────
 

@@ -72,13 +72,30 @@ class ConjugationRow {
       baseWordId:   m['base_word_id'] as int,
       formArabic:   m['form_arabic'] as String,
       tense:        m['tense'] as String,
-      pronoun:      m['pronoun'] as String?,
+      pronoun:      _personFromDbPronoun(m['pronoun'] as String?),
       number:       m['number'] as String,
       gender:       m['gender'] as String? ?? _genderFromDisplayOrder(displayOrder),
       voice:        m['voice'] as String,
       mood:         m['mood'] as String,
       displayOrder: displayOrder,
     );
+  }
+
+  /// Normalises the pronoun value stored in the DB to the person strings used
+  /// by the UI lookup code ('3rd' / '2nd' / '1st').
+  ///
+  /// v13 pre-populated rows store Arabic pronoun names ('huwa', 'hiya', …).
+  /// Engine-generated rows already store '3rd'/'2nd'/'1st', so those pass
+  /// through unchanged via the final fallback.
+  static String? _personFromDbPronoun(String? pronoun) {
+    if (pronoun == null) return null;
+    const third  = {'huwa', 'hiya', 'huma_m', 'huma_f', 'hum', 'hunna'};
+    const second = {'anta', 'anti', 'antuma', 'antum', 'antunna'};
+    const first  = {'ana', 'nahnu'};
+    if (third.contains(pronoun))  return '3rd';
+    if (second.contains(pronoun)) return '2nd';
+    if (first.contains(pronoun))  return '1st';
+    return pronoun; // already '3rd'/'2nd'/'1st' from engine-generated rows
   }
 
   static String? _genderFromDisplayOrder(int d) {
